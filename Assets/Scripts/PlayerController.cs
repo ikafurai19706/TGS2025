@@ -25,6 +25,10 @@ public class PlayerController : MonoBehaviour
     private int _repairCount;
     private Platform _targetPlatform;
     private Coroutine _swingCoroutine;
+    
+    // Timing System
+    private RepairTimingSystem _timingSystem;
+    private bool _isInTimingChallenge = false;
     #endregion
 
     #region Constants
@@ -82,6 +86,12 @@ public class PlayerController : MonoBehaviour
     private void InitializeComponents()
     {
         _rigidbody = GetComponent<Rigidbody>();
+        _timingSystem = GetComponent<RepairTimingSystem>();
+        
+        if (_timingSystem == null)
+        {
+            Debug.LogWarning("PlayerController: RepairTimingSystem component not found!");
+        }
     }
     #endregion
 
@@ -102,15 +112,21 @@ public class PlayerController : MonoBehaviour
     {
         if (Keyboard.current.spaceKey.wasPressedThisFrame)
         {
+            // タイミングチャレンジ中の場合
+            if (_isInTimingChallenge && _timingSystem != null)
+            {
+                _timingSystem.OnTimingInput();
+                return;
+            }
+            
             // 9回の修繕が完了している場合は落下中の足場をキャッチ
             if (_repairCount >= REPAIR_NEEDED)
             {
                 TryCatchFallingPlatform();
+                return;
             }
-            else
-            {
-                ProcessRepairHit();
-            }
+            
+            ProcessRepairHit();
         }
     }
 
@@ -123,12 +139,10 @@ public class PlayerController : MonoBehaviour
             if (platform.CanRepair())
             {
                 StartPlatformRepair(platform);
-                return; // 修理開始後は他の処理をスキップ
             }
             else if (platform.IsFalling())
             {
                 StartFallingPlatformCatch(platform);
-                return; // キャッチ開始後は他の処理をスキップ
             }
             // 足場が検出されたが修理もキャッチもできない場合の処理を追加
             else if (platform.repairState == Platform.RepairState.Completed)
@@ -198,10 +212,48 @@ public class PlayerController : MonoBehaviour
 
     private void CompleteRepair()
     {
-        _targetPlatform.Repair();
-        // 修繕状態は維持して落下中の足場をキャッチできるようにする
-        // _isRepairing = false; この行を削除
-        // Keep _targetPlatform for falling platform catch
+        // タイミングチャレンジを開始
+        if (_timingSystem != null && GameManager.Instance != null)
+        {
+            _isInTimingChallenge = true;
+            var config = GameManager.Instance.GetCurrentDifficultyConfig();
+            _timingSystem.StartTimingChallenge(config, OnTimingChallengeComplete);
+        }
+        else
+        {
+            // タイミングシステムがない場合は従来の処理
+            _targetPlatform.Repair();
+        }
+    }
+    
+    private void OnTimingChallengeComplete(GameManager.TimingResult result)
+    {
+        _isInTimingChallenge = false;
+        
+        // GameManagerに結果を通知
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.OnRepairAttempt(result);
+        }
+        
+        // 結果に応じて処理を分岐
+        if (result != GameManager.TimingResult.Miss)
+        {
+            // Miss以外の場合は修繕を完了
+            _targetPlatform.Repair();
+            
+            // チュートリアルモードの場合、足場完了を通知
+            if (GameManager.Instance.IsTutorialMode())
+            {
+                GameManager.Instance.OnTutorialPlatformCompleted();
+            }
+        }
+        
+        // 修繕状態をリセット（Miss以外の場合は落下キャッチに移行）
+        if (result == GameManager.TimingResult.Miss)
+        {
+            ResetRepairState();
+        }
     }
 
     private void StartPlatformRepair(Platform platform)
@@ -223,16 +275,64 @@ public class PlayerController : MonoBehaviour
     #region Platform Detection
     private bool TryDetectPlatform(out Platform platform)
     {
-        Vector3 origin = transform.position + new Vector3(0, RAYCAST_OFFSET_Y, RAYCAST_OFFSET_Z);
+        // プレイヤーの現在のZ座標を基に、次の足場の位置を計算
+        float playerZ = transform.position.z;
+        int nextPlatformIndex = GetNextPlatformIndexFromPosition(playerZ);
         
-        if (Physics.Raycast(origin, Vector3.down, out var hit, RAYCAST_DISTANCE))
+        // 次の足場の確定位置（中心座標）
+        Vector3 platformPosition = new Vector3(0, 0, nextPlatformIndex);
+        
+        // その位置にある足場を検索
+        platform = FindPlatformAtPosition(platformPosition);
+        
+        if (platform != null)
         {
-            platform = hit.collider.GetComponent<Platform>();
-            return platform != null;
+            Debug.Log($"Player at Z={playerZ:F2}, detected NEXT platform index {nextPlatformIndex} at position ({platformPosition.x}, {platformPosition.y}, {platformPosition.z}): {platform.name}");
+            return true;
         }
         
-        platform = null;
         return false;
+    }
+    
+    private int GetNextPlatformIndexFromPosition(float playerZ)
+    {
+        // 現在いる足場のインデックスを取得
+        int currentPlatformIndex = Mathf.FloorToInt(playerZ + 0.5f);
+        
+        // 次の足場のインデックスを返す
+        return currentPlatformIndex + 1;
+    }
+    
+    private int GetPlatformIndexFromPosition(float playerZ)
+    {
+        // 足場nの範囲は (n-0.5) <= z < (n+0.5)
+        // 例: 足場1の範囲は 0.5 <= z < 1.5
+        // 例: 足場2の範囲は 1.5 <= z < 2.5
+        
+        // プレイヤーのZ座標に0.5を足してから切り捨てることで正確な足場インデックスを取得
+        return Mathf.FloorToInt(playerZ + 0.5f);
+    }
+    
+    private Platform FindPlatformAtPosition(Vector3 position)
+    {
+        // 指定位置付近の小さな範囲内でPlatformコンポーネントを持つオブジェクトを検索
+        Collider[] colliders = Physics.OverlapSphere(position, 0.5f);
+        
+        foreach (Collider collider in colliders)
+        {
+            Platform platform = collider.GetComponent<Platform>();
+            if (platform != null)
+            {
+                // 位置がほぼ一致するかチェック（少し誤差を許容）
+                Vector3 platformPos = platform.transform.position;
+                if (Vector3.Distance(platformPos, position) < 0.1f)
+                {
+                    return platform;
+                }
+            }
+        }
+        
+        return null;
     }
 
     private void TryCatchFallingPlatform()
