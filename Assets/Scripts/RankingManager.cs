@@ -1,6 +1,5 @@
-using System.Collections.Generic;
 using UnityEngine;
-using System.Linq;
+using System.Collections.Generic;
 
 public class RankingManager : MonoBehaviour
 {
@@ -20,7 +19,7 @@ public class RankingManager : MonoBehaviour
 
     #region Private Fields
     private RankingData _rankingData;
-    private const string RANKING_KEY = "BridgeGameRanking";
+    private const string RankingKey = "BridgeGameRanking";
     #endregion
 
     #region Unity Lifecycle
@@ -42,34 +41,36 @@ public class RankingManager : MonoBehaviour
     #region Public Methods
     public void AddScore(GameManager.Difficulty difficulty, int score)
     {
-        int[] scores = GetScoresArray(difficulty);
+        int[] targetArray = GetScoresArray(difficulty);
         
-        // 新しいスコアを追加してソート
-        List<int> scoreList = scores.ToList();
+        // 新しいスコアを追加
+        List<int> scoreList = new List<int>(targetArray);
         scoreList.Add(score);
-        scoreList = scoreList.OrderByDescending(s => s).Take(10).ToList();
         
-        // 配列に戻す
-        for (int i = 0; i < scores.Length; i++)
+        // 降順でソート
+        scoreList.Sort((a, b) => b.CompareTo(a));
+        
+        // 上位10位まで保持
+        for (int i = 0; i < Mathf.Min(10, scoreList.Count); i++)
         {
-            scores[i] = i < scoreList.Count ? scoreList[i] : 0;
+            targetArray[i] = scoreList[i];
         }
         
+        // データを保存
         SaveRankingData();
-        Debug.Log($"Added score {score} to {difficulty} ranking");
     }
-    
+
     public RankingData GetRankingData()
     {
         return _rankingData;
     }
-    
+
     public int GetBestScore(GameManager.Difficulty difficulty)
     {
         int[] scores = GetScoresArray(difficulty);
         return scores.Length > 0 ? scores[0] : 0;
     }
-    
+
     public void ClearRanking()
     {
         _rankingData = new RankingData();
@@ -88,12 +89,12 @@ public class RankingManager : MonoBehaviour
             default: return _rankingData.normalScores;
         }
     }
-    
+
     private void LoadRankingData()
     {
-        if (PlayerPrefs.HasKey(RANKING_KEY))
+        if (PlayerPrefs.HasKey(RankingKey))
         {
-            string jsonData = PlayerPrefs.GetString(RANKING_KEY);
+            string jsonData = PlayerPrefs.GetString(RankingKey);
             _rankingData = JsonUtility.FromJson<RankingData>(jsonData);
         }
         else
@@ -101,11 +102,11 @@ public class RankingManager : MonoBehaviour
             _rankingData = new RankingData();
         }
     }
-    
+
     private void SaveRankingData()
     {
         string jsonData = JsonUtility.ToJson(_rankingData);
-        PlayerPrefs.SetString(RANKING_KEY, jsonData);
+        PlayerPrefs.SetString(RankingKey, jsonData);
         PlayerPrefs.Save();
     }
     #endregion

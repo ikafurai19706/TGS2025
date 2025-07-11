@@ -11,6 +11,12 @@ public class PlayerController : MonoBehaviour
     [Header("Animation")]
     public Transform hammer;
     public Transform cameraTransform;
+    
+    [Header("Timing Challenge Settings")]
+    public float timingWindowDuration = 2f; // タイミング入力の全体時間
+    
+    // Platformクラスからアクセスできるようにパブリックプロパティを追加
+    public float TimingWindowDuration => timingWindowDuration;
     #endregion
 
     #region Private Fields
@@ -26,9 +32,15 @@ public class PlayerController : MonoBehaviour
     private Platform _targetPlatform;
     private Coroutine _swingCoroutine;
     
-    // Timing System
-    private RepairTimingSystem _timingSystem;
-    private bool _isInTimingChallenge = false;
+    // Integrated Timing System
+    private bool _isInTimingChallenge;
+    private float _timingStartTime;
+    private GameManager.DifficultyConfig _currentConfig;
+    private System.Action<GameManager.TimingResult> _onTimingComplete;
+    private Coroutine _timingCoroutine;
+    
+    // 初期位置を記録
+    private Vector3 _initialPosition;
     #endregion
 
     #region Constants
@@ -64,6 +76,7 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         HandleInput();
+        CheckGameCompletion(); // ゲーム完了チェックを追加
     }
     #endregion
 
@@ -86,18 +99,177 @@ public class PlayerController : MonoBehaviour
     private void InitializeComponents()
     {
         _rigidbody = GetComponent<Rigidbody>();
-        _timingSystem = GetComponent<RepairTimingSystem>();
         
-        if (_timingSystem == null)
+        // 初期位置を記録
+        _initialPosition = transform.position;
+        
+        // RepairTimingSystemコンポーネントは不要になったため削除
+        // タイミングシステムは統合されました
+    }
+    #endregion
+
+    #region Integrated Timing System
+    public void StartTimingChallenge(GameManager.DifficultyConfig config, System.Action<GameManager.TimingResult> onComplete)
+    {
+        if (_isInTimingChallenge) return;
+
+        _currentConfig = config;
+        _onTimingComplete = onComplete;
+        
+        _timingCoroutine = StartCoroutine(TimingSequence());
+    }
+    
+    private IEnumerator TimingSequence()
+    {
+        _isInTimingChallenge = true;
+        
+        // UIManagerにタイミングUI表示を依頼（即座に表示）
+        if (UIManager.Instance != null)
         {
-            Debug.LogWarning("PlayerController: RepairTimingSystem component not found!");
+            UIManager.Instance.ShowTimingUI(timingWindowDuration);
         }
+        
+        // 修繕フェーズを0.3秒遅らせてスタート
+        yield return new WaitForSeconds(0.3f);
+        
+        // 実際のタイミング開始時刻を設定
+        _timingStartTime = Time.time;
+        
+        // 足場の落下を開始（0.3秒遅れて開始）
+        if (_targetPlatform != null)
+        {
+            _targetPlatform.StartFalling();
+        }
+        
+        // タイミング窓の終了を待つ
+        yield return new WaitForSeconds(timingWindowDuration);
+        
+        // 時間切れの場合はMiss
+        if (_isInTimingChallenge)
+        {
+            CompleteTimingChallenge(GameManager.TimingResult.Miss);
+        }
+    }
+    
+    private void ProcessTimingInput()
+    {
+        if (!_isInTimingChallenge) return;
+
+        // タイミングをチェック
+        float elapsedTime = Time.time - _timingStartTime;
+        float normalizedTime = elapsedTime / timingWindowDuration;
+
+        // 現在修理中の足場の落下を停止し、同時にキャッチ処理を実行
+        if (_targetPlatform != null)
+        {
+            // 足場の落下を停止
+            _targetPlatform.StopFalling();
+            
+            // 直接キャッチ処理を実行（カウント増加を含む）
+            bool catchSuccess = _targetPlatform.TryCatchFallingPlatform();
+            
+            if (catchSuccess)
+            {
+                // キャッチ成功時は修理状態をリセット
+                ResetRepairState();
+            }
+        }
+        else
+        {
+            Debug.LogWarning("ProcessTimingInput: _targetPlatform is null!");
+        }
+
+        GameManager.TimingResult result = EvaluateTiming(normalizedTime);
+        CompleteTimingChallenge(result);
+    }
+    
+    private GameManager.TimingResult EvaluateTiming(float normalizedTime)
+    {
+        // カーソル位置に依存した正確な百分率計算
+        float perfectCenter = 0.5f; // 中央位置（50%）
+        float distanceFromCenter = Mathf.Abs(normalizedTime - perfectCenter);
+        float accuracyPercentage = (1f - (distanceFromCenter / 0.5f)) * 100f; // 中央からの距離を百分率に変換
+        
+        // 現在の難易度に応じた判定閾値を設定
+        float perfectThreshold, goodThreshold, badThreshold;
+        
+        switch (GameManager.Instance?.GetCurrentDifficulty() ?? GameManager.Difficulty.Normal)
+        {
+            case GameManager.Difficulty.Easy:
+                perfectThreshold = 80f;  // 80%以上でPerfect
+                goodThreshold = 60f;     // 60%以上でGood
+                badThreshold = 40f;      // 40%以上でBad
+                break;
+            case GameManager.Difficulty.Normal:
+                perfectThreshold = 85f;  // 85%以上でPerfect
+                goodThreshold = 67.5f;   // 67.5%以上でGood
+                badThreshold = 50f;      // 50%以上でBad
+                break;
+            case GameManager.Difficulty.Hard:
+                perfectThreshold = 90f;  // 90%以上でPerfect
+                goodThreshold = 75f;     // 75%以上でGood
+                badThreshold = 60f;      // 60%以上でBad
+                break;
+            default:
+                perfectThreshold = 85f;
+                goodThreshold = 67.5f;
+                badThreshold = 50f;
+                break;
+        }
+        
+        // 百分率に基づいた判定
+        if (accuracyPercentage >= perfectThreshold)
+        {
+            return GameManager.TimingResult.Perfect;
+        }
+        else if (accuracyPercentage >= goodThreshold)
+        {
+            return GameManager.TimingResult.Good;
+        }
+        else if (accuracyPercentage >= badThreshold)
+        {
+            return GameManager.TimingResult.Bad;
+        }
+        else
+        {
+            return GameManager.TimingResult.Miss;
+        }
+    }
+    
+    private void CompleteTimingChallenge(GameManager.TimingResult result)
+    {
+        _isInTimingChallenge = false;
+        
+        // タイミングコルーチンを停止
+        if (_timingCoroutine != null)
+        {
+            StopCoroutine(_timingCoroutine);
+            _timingCoroutine = null;
+        }
+        
+        // UIManagerにタイミングUI非表示を依頼
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.HideTimingUI();
+        }
+        
+        // 結果をコールバック
+        _onTimingComplete?.Invoke(result);
     }
     #endregion
 
     #region Input Handling
     private void HandleInput()
     {
+        // ゲーム状態をチェックして、Tutorial または Playing状態の場合のみ入力を受け付ける
+        // TutorialCountdown中は操作を禁止
+        if (GameManager.Instance == null || 
+            (GameManager.Instance.GetCurrentState() != GameManager.GameState.Playing && 
+             GameManager.Instance.GetCurrentState() != GameManager.GameState.Tutorial))
+        {
+            return;
+        }
+
         if (_isRepairing)
         {
             HandleRepairInput();
@@ -112,10 +284,19 @@ public class PlayerController : MonoBehaviour
     {
         if (Keyboard.current.spaceKey.wasPressedThisFrame)
         {
-            // タイミングチャレンジ中の場合
-            if (_isInTimingChallenge && _timingSystem != null)
+            // チュートリアル中の通常足場の場合、1回叩いただけで進行カウントを増やす
+            if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode() && 
+                _targetPlatform != null && _targetPlatform.type == Platform.PlatformType.Normal)
             {
-                _timingSystem.OnTimingInput();
+                // 通常足場のチュートリアル処理
+                ProcessNormalPlatformTutorial();
+                return;
+            }
+            
+            // タイミングチャレンジ中の場合
+            if (_isInTimingChallenge)
+            {
+                ProcessTimingInput();
                 return;
             }
             
@@ -130,13 +311,33 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    // チュートリアル中の通常足場を叩いた時の処理
+    private void ProcessNormalPlatformTutorial()
+    {
+        // ハンマーを振る演出
+        PerformHammerSwing();
+        
+        // 修繕処理は呼ばず、直接チュートリアル進行カウントを増やす
+        if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
+        {
+            GameManager.Instance.OnTutorialPlatformCompleted();
+        }
+        
+        // 修繕状態をリセット
+        ResetRepairState();
+    }
+
     private void HandlePlatformDetection()
     {
         if (TryDetectPlatform(out Platform platform))
         {
-            Debug.Log($"Platform detected: {platform.name}, CanRepair: {platform.CanRepair()}, IsFalling: {platform.IsFalling()}, RepairState: {platform.repairState}");
-            
-            if (platform.CanRepair())
+            // チュートリアル中の通常足場の場合、修理状態にしない
+            if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode() && platform.type == Platform.PlatformType.Normal)
+            {
+                // 通常足場では修理状態にせず、移動処理で叩いた時に処理する
+                return;
+            }
+            else if (platform.CanRepair())
             {
                 StartPlatformRepair(platform);
             }
@@ -148,7 +349,6 @@ public class PlayerController : MonoBehaviour
             else if (platform.repairState == Platform.RepairState.Completed)
             {
                 // 修理完了済みの足場の場合は何もしない（通行可能）
-                Debug.Log($"Platform {platform.name} is completed, allowing passage");
             }
             else
             {
@@ -162,10 +362,28 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    // チュートリアル中の通常足場用の処理
+    private void StartNormalPlatformTutorial(Platform platform)
+    {
+        _targetPlatform = platform;
+        _isRepairing = true;
+        _repairCount = 0;
+    }
+
     private void HandleMovementInput()
     {
         if (_canMove && Keyboard.current.spaceKey.wasPressedThisFrame && !_isMoving)
         {
+            // チュートリアル中の通常足場の場合、移動前に進行カウントを増やす
+            if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
+            {
+                if (TryDetectPlatform(out Platform platform) && platform.type == Platform.PlatformType.Normal)
+                {
+                    // 通常足場のチュートリアル進行カウントを増やす
+                    GameManager.Instance.OnTutorialPlatformCompleted();
+                }
+            }
+            
             StartCoroutine(MoveWithHammerSwing(MOVEMENT_DISTANCE, MOVEMENT_DURATION));
         }
     }
@@ -190,6 +408,9 @@ public class PlayerController : MonoBehaviour
         UpdateMaterialProgress();
         PerformHammerSwing();
         
+        // 初回叩き時から残り回数を表示
+        UpdateCountLeftDisplay();
+        
         if (_repairCount == REPAIR_NEEDED)
         {
             CompleteRepair();
@@ -213,16 +434,23 @@ public class PlayerController : MonoBehaviour
     private void CompleteRepair()
     {
         // タイミングチャレンジを開始
-        if (_timingSystem != null && GameManager.Instance != null)
+        if (GameManager.Instance != null)
         {
-            _isInTimingChallenge = true;
             var config = GameManager.Instance.GetCurrentDifficultyConfig();
-            _timingSystem.StartTimingChallenge(config, OnTimingChallengeComplete);
+            
+            // 足場を落下開始させる（元の位置に戻す）
+            if (_targetPlatform != null)
+            {
+                _targetPlatform.StartFalling();
+            }
+            
+            StartTimingChallenge(config, OnTimingChallengeComplete);
         }
         else
         {
-            // タイミングシステムがない場合は従来の処理
+            // GameManagerがない場合は従来の処理
             _targetPlatform.Repair();
+            ResetRepairState();
         }
     }
     
@@ -230,9 +458,10 @@ public class PlayerController : MonoBehaviour
     {
         _isInTimingChallenge = false;
         
-        // GameManagerに結果を通知
-        if (GameManager.Instance != null)
+        // チュートリアル時はGameManagerのスコア処理をスキップ
+        if (GameManager.Instance != null && !GameManager.Instance.IsTutorialMode())
         {
+            // 通常ゲーム中のみGameManagerに結果を通知
             GameManager.Instance.OnRepairAttempt(result);
         }
         
@@ -242,17 +471,29 @@ public class PlayerController : MonoBehaviour
             // Miss以外の場合は修繕を完了
             _targetPlatform.Repair();
             
-            // チュートリアルモードの場合、足場完了を通知
-            if (GameManager.Instance.IsTutorialMode())
+            // チュートリアル中の場合、ここではカウントを追加しない
+            // 足場のキャッチ完了時に追加する
+        }
+        else
+        {
+            // Miss時の処理
+            if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
             {
-                GameManager.Instance.OnTutorialPlatformCompleted();
+                // チュートリアル時：単純にリセットするだけ
+                ResetRepairState();
+            }
+            else
+            {
+                // 通常ゲーム時：ゲーム終了は既にGameManager.OnRepairAttemptで処理済み
+                ResetRepairState();
             }
         }
         
         // 修繕状態をリセット（Miss以外の場合は落下キャッチに移行）
         if (result == GameManager.TimingResult.Miss)
         {
-            ResetRepairState();
+            // Miss時は上記で既に処理済み
+            return;
         }
     }
 
@@ -262,6 +503,8 @@ public class PlayerController : MonoBehaviour
         _repairCount = 0;
         _targetPlatform = platform;
         platform.StartRepair();
+        
+        // 修繕開始時は残り回数を表示しない（初回叩き時に表示）
     }
 
     private void StartFallingPlatformCatch(Platform platform)
@@ -269,6 +512,31 @@ public class PlayerController : MonoBehaviour
         _targetPlatform = platform;
         _isRepairing = true;
         _repairCount = REPAIR_NEEDED;
+        
+        // キャッチ状態では残り回数を0に
+        UpdateCountLeftDisplay();
+    }
+
+    private void UpdateCountLeftDisplay()
+    {
+        if (UIManager.Instance != null)
+        {
+            int countLeft = Mathf.Max(0, REPAIR_NEEDED - _repairCount);
+            UIManager.Instance.UpdateCountLeft(countLeft);
+        }
+    }
+
+    private void ResetRepairState()
+    {
+        _isRepairing = false;
+        _repairCount = 0;
+        _targetPlatform = null;
+        
+        // 修繕状態リセット時に残り回数表示をクリア
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.UpdateCountLeft(0);
+        }
     }
     #endregion
 
@@ -287,7 +555,6 @@ public class PlayerController : MonoBehaviour
         
         if (platform != null)
         {
-            Debug.Log($"Player at Z={playerZ:F2}, detected NEXT platform index {nextPlatformIndex} at position ({platformPosition.x}, {platformPosition.y}, {platformPosition.z}): {platform.name}");
             return true;
         }
         
@@ -344,13 +611,6 @@ public class PlayerController : MonoBehaviour
         {
             ResetRepairState();
         }
-    }
-
-    private void ResetRepairState()
-    {
-        _isRepairing = false;
-        _repairCount = 0;
-        _targetPlatform = null;
     }
     #endregion
 
@@ -434,6 +694,11 @@ public class PlayerController : MonoBehaviour
     {
         _canMove = canMove;
     }
+    
+    public void OnPlatformCollapse()
+    {
+        StartCoroutine(CameraShake(COLLAPSE_SHAKE_DURATION, COLLAPSE_SHAKE_MAGNITUDE));
+    }
 
     private IEnumerator CameraShake(float duration, float magnitude)
     {
@@ -480,6 +745,80 @@ public class PlayerController : MonoBehaviour
     private static float EaseOutQuad(float t)
     {
         return 1 - Mathf.Pow(1 - t, 2);
+    }
+    #endregion
+
+    #region Game Completion Check
+    private void CheckGameCompletion()
+    {
+        // ゲームが進行中でない場合はチェックしない
+        if (GameManager.Instance == null || 
+            GameManager.Instance.GetCurrentState() != GameManager.GameState.Playing)
+        {
+            return;
+        }
+        
+        // プレイヤーの現在位置から次の足場の位置を取得
+        float playerZ = transform.position.z;
+        int nextPlatformIndex = GetNextPlatformIndexFromPosition(playerZ);
+        Vector3 nextPlatformPosition = new Vector3(0, 0, nextPlatformIndex);
+        
+        // 次の足場が存在するかチェック
+        Platform nextPlatform = FindPlatformAtPosition(nextPlatformPosition);
+        
+        // 次の足場が存在しない場合、ゲーム完了
+        if (nextPlatform == null)
+        {
+            CompleteGame();
+        }
+    }
+    
+    private void CompleteGame()
+    {
+        // 移動を停止
+        _canMove = false;
+        
+        // GameManagerにゲーム完了を通知
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.OnBridgeComplete();
+        }
+    }
+    #endregion
+
+    #region Player Reset
+    public void ResetToInitialPosition()
+    {
+        // プレイヤーを初期位置に戻す
+        transform.position = _initialPosition;
+        
+        // プレイヤーの状態をリセット
+        _canMove = true;
+        _isMoving = false;
+        _isRepairing = false;
+        _repairCount = 0;
+        _targetPlatform = null;
+        _isInTimingChallenge = false;
+        
+        // タイミングコルーチンを停止
+        if (_timingCoroutine != null)
+        {
+            StopCoroutine(_timingCoroutine);
+            _timingCoroutine = null;
+        }
+        
+        // ハンマーアニメーションを停止
+        if (_swingCoroutine != null)
+        {
+            StopCoroutine(_swingCoroutine);
+            _swingCoroutine = null;
+        }
+        
+        // ハンマーの角度をリセット
+        if (hammer != null)
+        {
+            hammer.localRotation = Quaternion.Euler(45, hammer.localEulerAngles.y, hammer.localEulerAngles.z);
+        }
     }
     #endregion
 }

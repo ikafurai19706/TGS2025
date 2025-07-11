@@ -40,13 +40,14 @@ public class Platform : MonoBehaviour
     private bool _canCatch;
     private Vector3 _originalPosition;
     private Coroutine _fallCoroutine;
+    private bool _fallAnimationStopped; // 落下アニメーション停止フラグを追加
     #endregion
 
     #region Constants
-    private const float FALL_BELOW_DISTANCE = 1f; // 叩ける範囲と同じ1メートル下まで落とす
-    private const float CATCH_RANGE_START_RATIO = 0.8f;
-    private const float CATCH_RANGE_END_RATIO = 1.2f;
-    private const float FALL_CLEANUP_DELAY = 1f;
+    private const float FallBelowDistance = 1f; // 叩ける範囲と同じ1メートル下まで落とす
+    private const float CatchRangeStartRatio = 0.8f;
+    private const float CatchRangeEndRatio = 1.2f;
+    private const float FallCleanupDelay = 1f;
     #endregion
 
     #region Unity Lifecycle
@@ -103,7 +104,12 @@ public class Platform : MonoBehaviour
 
     public void Repair()
     {
-        if (CanCompleteRepair())
+        if (type == PlatformType.Normal)
+        {
+            // 通常足場の場合は修繕不要、叩いただけで進行
+            // PlayerControllerで直接GameManagerを呼び出すため、ここでは何もしない
+        }
+        else if (CanCompleteRepair())
         {
             CompleteRepair();
         }
@@ -115,12 +121,15 @@ public class Platform : MonoBehaviour
 
         Vector3 stoppedPosition = _fallingPlatform.transform.position;
         
-        if (IsWithinHeightTolerance(stoppedPosition))
-        {
-            return CatchPlatformAtPosition(stoppedPosition);
-        }
+        // キャッチした時の判定値を計算
+        float catchAccuracy = CalculateCatchAccuracy(stoppedPosition);
+        string catchJudgment = EvaluateCatchJudgment(catchAccuracy);
         
-        return false; // Outside height tolerance
+        // 判定と判定値を出力
+        Debug.Log($"Platform Catch - Position: {stoppedPosition.y:F2}, Accuracy: {catchAccuracy:F1}%, Judgment: {catchJudgment}");
+        
+        // 高さ制限を削除してTimingCursorと完全に同期
+        return CatchPlatformAtPosition(stoppedPosition);
     }
 
     public void ChangeMaterialStep(int step)
@@ -135,6 +144,63 @@ public class Platform : MonoBehaviour
             case 6 when stepMaterial2 != null:
                 _renderer.material = stepMaterial2;
                 break;
+        }
+    }
+
+    // 足場の落下を停止するメソッドを追加
+    public void StopFalling()
+    {
+        if (_isFalling && _fallCoroutine != null)
+        {
+            // 落下アニメーション停止フラグを設定
+            _fallAnimationStopped = true;
+            
+            StopCoroutine(_fallCoroutine);
+            _fallCoroutine = null;
+            
+            // 現在の位置で足場を固定
+            if (_fallingPlatform != null)
+            {
+                Vector3 currentPosition = _fallingPlatform.transform.position;
+            }
+        }
+        else if (!_isFalling)
+        {
+            Debug.LogWarning($"Platform {name} - StopFalling called but _isFalling is false");
+        }
+        else if (_fallCoroutine == null)
+        {
+            Debug.LogWarning($"Platform {name} - StopFalling called but _fallCoroutine is null");
+        }
+    }
+
+    // タイミングチャレンジ開始時に呼び出される新しいメソッド
+    public void StartFalling()
+    {
+        if (_isFalling || repairState != RepairState.Repairing) return;
+        
+        // 足場の落下を開始
+        repairState = RepairState.ReadyForReplacement;
+        _isFalling = true;
+        _canCatch = false; // 最初はキャッチできない
+        
+        // 元の足場を非表示にする（重要！）
+        SetPlatformVisible(false);
+        
+        // 落下する足場を生成
+        if (newPlatformPrefab != null)
+        {
+            _originalPosition = transform.position;
+            // 落下開始位置を上に設定（fallHeightの高さから開始）
+            Vector3 startPosition = _originalPosition + Vector3.up * fallHeight;
+            _fallingPlatform = Instantiate(newPlatformPrefab, startPosition, transform.rotation);
+            
+            // 落下アニメーションを開始
+            if (_fallCoroutine != null)
+            {
+                StopCoroutine(_fallCoroutine);
+            }
+            _fallCoroutine = StartCoroutine(FallWithTimingBar());
         }
     }
 
@@ -170,19 +236,51 @@ public class Platform : MonoBehaviour
     #region Private Methods - Repair Logic
     private bool CanStartRepair()
     {
+        // 通常足場の場合は壊れた状態から修理可能
+        if (type == PlatformType.Normal)
+        {
+            return repairState == RepairState.Broken;
+        }
+        
+        // 壊れた足場の場合は従来通り
         return type == PlatformType.Fragile && repairState == RepairState.Broken;
     }
 
     private bool CanCompleteRepair()
     {
+        // 通常足場の場合は即座に修理完了可能
+        if (type == PlatformType.Normal)
+        {
+            return repairState == RepairState.Broken;
+        }
+        
+        // 壊れた足場の場合は修理中状態から完了へ
         return type == PlatformType.Fragile && repairState == RepairState.Repairing;
     }
 
     private void CompleteRepair()
     {
-        repairState = RepairState.ReadyForReplacement;
-        SetPlatformVisible(false);
-        StartCoroutine(DropNewPlatform());
+        if (type == PlatformType.Normal)
+        {
+            // 通常足場の場合は即座に修理完了
+            repairState = RepairState.Completed;
+            isRepaired = true;
+            
+            if (repairedMaterial != null && _renderer != null)
+            {
+                _renderer.material = repairedMaterial;
+            }
+        }
+        else if (type == PlatformType.Fragile)
+        {
+            // 壊れた足場の場合は足場落下処理
+            repairState = RepairState.ReadyForReplacement;
+            SetPlatformVisible(false);
+            StartCoroutine(DropNewPlatform());
+        }
+        
+        // チュートリアルカウントはキャッチ完了時のみ追加するため、ここでは削除
+        // 壊れた足場のカウントはCatchPlatformAtPositionで処理される
     }
     #endregion
 
@@ -204,17 +302,17 @@ public class Platform : MonoBehaviour
         MovePlatformToPosition(position);
         SetPlatformAsRepaired();
         CleanupFallingPlatform();
+        
+        // チュートリアル中の場合、キャッチ成功時にカウントを追加
+        if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
+        {
+            GameManager.Instance.OnTutorialPlatformCompleted();
+            Debug.Log($"Fragile platform tutorial completed: {name} caught successfully");
+        }
+        
         return true;
     }
 
-    private void StopFalling()
-    {
-        if (_fallCoroutine != null)
-        {
-            StopCoroutine(_fallCoroutine);
-            _fallCoroutine = null;
-        }
-    }
 
     private void MovePlatformToPosition(Vector3 position)
     {
@@ -286,13 +384,13 @@ public class Platform : MonoBehaviour
     private FallAnimationData CalculateFallParameters()
     {
         Vector3 startPos = _fallingPlatform.transform.position;
-        Vector3 targetPos = _originalPosition + Vector3.down * FALL_BELOW_DISTANCE;
+        Vector3 targetPos = _originalPosition + Vector3.down * FallBelowDistance;
         float fallDistance = Vector3.Distance(startPos, targetPos);
         float fallTime = fallDistance / fallSpeed;
         
         float originalDistance = Vector3.Distance(startPos, _originalPosition);
-        float catchRangeStart = originalDistance * CATCH_RANGE_START_RATIO;
-        float catchRangeEnd = originalDistance * CATCH_RANGE_END_RATIO;
+        float catchRangeStart = originalDistance * CatchRangeStartRatio;
+        float catchRangeEnd = originalDistance * CatchRangeEndRatio;
         
         return new FallAnimationData
         {
@@ -354,9 +452,116 @@ public class Platform : MonoBehaviour
         repairState = RepairState.Broken;
     }
 
+    // TimingBarと同期した落下アニメーション
+    private IEnumerator FallWithTimingBar()
+    {
+        if (_fallingPlatform == null) yield break;
+        
+        // PlayerControllerのタイミングウィンドウ時間を取得
+        float timingDuration = 2f; // デフォルト値
+        var playerController = FindFirstObjectByType<PlayerController>();
+        if (playerController != null)
+        {
+            // PlayerControllerのTimingWindowDurationプロパティを参照
+            timingDuration = playerController.TimingWindowDuration;
+        }
+        
+        var fallData = CalculateTimingFallParameters(timingDuration);
+        
+        yield return StartCoroutine(AnimateTimingFall(fallData, timingDuration));
+        
+        if (_isFalling)
+        {
+            HandleFallComplete();
+        }
+    }
+
+    private FallAnimationData CalculateTimingFallParameters(float duration)
+    {
+        Vector3 startPos = _fallingPlatform.transform.position;
+        Vector3 targetPos = _originalPosition + Vector3.down * FallBelowDistance;
+        
+        // キャッチ可能範囲をTimingBarの中央部分に設定
+        float catchRangeStart = duration * 0.3f; // 30%の時点から
+        float catchRangeEnd = duration * 0.7f;   // 70%の時点まで
+        
+        return new FallAnimationData
+        {
+            StartPosition = startPos,
+            TargetPosition = targetPos,
+            FallTime = duration,
+            CatchRangeStart = catchRangeStart,
+            CatchRangeEnd = catchRangeEnd
+        };
+    }
+
+    private IEnumerator AnimateTimingFall(FallAnimationData data, float duration)
+    {
+        float elapsed = 0f;
+        
+        while (elapsed < duration && _isFalling && !_fallAnimationStopped)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            // TimingBarの進行に合わせてキャッチ可能性を更新
+            UpdateTimingCatchability(elapsed, data);
+            
+            // 落下位置を更新（TimingBarの進行と同期）
+            UpdateTimingFallPosition(data, t);
+            
+            yield return null;
+        }
+    }
+
+    private void UpdateTimingCatchability(float elapsed, FallAnimationData data)
+    {
+        // タイミングウィンドウの中央付近でキャッチ可能に
+        _canCatch = elapsed >= data.CatchRangeStart && elapsed <= data.CatchRangeEnd;
+    }
+
+    private void UpdateTimingFallPosition(FallAnimationData data, float t)
+    {
+        // 4段階の移動処理：2→0.5、0.5→0、0→-0.5、-0.5→-2
+        // 判定付近（0.5→0→-0.5）のみ遅くなるように設定
+        
+        Vector3 currentPosition;
+        float yOffset;
+        
+        if (t <= 0.2f)
+        {
+            // 0%～20%：y=+2からy=+0.5まで高速落下
+            float adjustedT = t / 0.2f; // 0.0 ～ 1.0 に正規化
+            yOffset = Mathf.Lerp(2f, 0.5f, adjustedT);
+        }
+        else if (t <= 0.5f)
+        {
+            // 20%～50%：y=+0.5からy=0まで低速落下（判定付近）
+            float adjustedT = (t - 0.2f) / 0.3f; // 0.0 ～ 1.0 に正規化
+            yOffset = Mathf.Lerp(0.5f, 0f, adjustedT);
+        }
+        else if (t <= 0.8f)
+        {
+            // 50%～80%：y=0からy=-0.5まで低速落下（判定付近）
+            float adjustedT = (t - 0.5f) / 0.3f; // 0.0 ～ 1.0 に正規化
+            yOffset = Mathf.Lerp(0f, -0.5f, adjustedT);
+        }
+        else
+        {
+            // 80%～100%：y=-0.5からy=-2まで高速落下
+            float adjustedT = (t - 0.8f) / 0.2f; // 0.0 ～ 1.0 に正規化
+            yOffset = Mathf.Lerp(-0.5f, -2f, adjustedT);
+        }
+        
+        // 元の位置にyオフセットを適用
+        currentPosition = _originalPosition + new Vector3(0, yOffset, 0);
+        
+        _fallingPlatform.transform.position = currentPosition;
+    }
+
     private IEnumerator CleanupAfterFall()
     {
-        yield return new WaitForSeconds(FALL_CLEANUP_DELAY);
+        yield return new WaitForSeconds(FallCleanupDelay);
         
         if (_fallingPlatform != null)
         {
@@ -453,7 +658,6 @@ public class Platform : MonoBehaviour
     private void NotifyCollapseEvent()
     {
         // ゲームマネージャーやイベントシステムに崩落を通知
-        Debug.Log($"Platform {gameObject.name} has collapsed!");
     }
     #endregion
 
@@ -472,6 +676,44 @@ public class Platform : MonoBehaviour
         public float FallTime;
         public float CatchRangeStart;
         public float CatchRangeEnd;
+    }
+    #endregion
+
+    #region Private Methods - Catch Accuracy
+    private float CalculateCatchAccuracy(Vector3 stoppedPosition)
+    {
+        // 停止位置と元の位置のY座標の差を計算
+        float heightDifference = Mathf.Abs(stoppedPosition.y - _originalPosition.y);
+        
+        // 高さの許容誤差内であれば成功とみなす
+        if (heightDifference <= allowedHeightError)
+        {
+            return 100f; // 成功
+        }
+        
+        // 誤差に応じて成功率を減少（線形補間）
+        float accuracy = Mathf.Lerp(100f, 0f, heightDifference / allowedHeightError);
+        return accuracy;
+    }
+
+    private string EvaluateCatchJudgment(float catchAccuracy)
+    {
+        if (catchAccuracy >= 90f)
+        {
+            return "Perfect";
+        }
+        else if (catchAccuracy >= 75f)
+        {
+            return "Great";
+        }
+        else if (catchAccuracy >= 50f)
+        {
+            return "Good";
+        }
+        else
+        {
+            return "Miss";
+        }
     }
     #endregion
 }

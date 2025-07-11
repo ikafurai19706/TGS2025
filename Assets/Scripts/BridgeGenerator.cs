@@ -13,7 +13,7 @@ public class BridgeGenerator : MonoBehaviour
     public int bridgeLength = 15;
     public int minFragileInterval = 1;
     public int maxFragileInterval = 4;
-    public Vector3 startPosition = new Vector3(0, 0, 1); // z=1から開始
+    public Vector3 startPosition = new Vector3(0, 0, 5); // z=5から開始（チュートリアル用はz=1-4）
     public float platformSpacing = 1f;
     
     [Header("Auto Generation")]
@@ -48,29 +48,35 @@ public class BridgeGenerator : MonoBehaviour
         GeneratePlatforms();
     }
     
-    public void GenerateBridgeWithDifficulty(GameManager.DifficultyConfig config)
+    // チュートリアル用足場を生成するメソッドを追加
+    public void GenerateTutorialPlatforms()
     {
-        // 難易度設定を適用
-        bridgeLength = config.bridgeLength;
+        // 既存の足場をクリア
+        ClearExistingPlatforms();
         
-        // 難易度に応じて壊れた足場の間隔を調整
-        if (config == GameManager.Instance?.easyConfig)
+        if (!ValidatePrefabs())
         {
-            minFragileInterval = 3;
-            maxFragileInterval = 5;
-        }
-        else if (config == GameManager.Instance?.hardConfig)
-        {
-            minFragileInterval = 1;
-            maxFragileInterval = 3;
-        }
-        else // Normal
-        {
-            minFragileInterval = 1;
-            maxFragileInterval = 4;
+            Debug.LogError("BridgeGenerator: Platform prefabs are not assigned!");
+            return;
         }
         
-        GenerateBridge();
+        // チュートリアル用の足場を生成（4つ）
+        // z=1-3: 通常足場（Normal）
+        // z=4: 壊れた足場（Fragile）
+        for (int i = 1; i <= 4; i++)
+        {
+            Vector3 position = new Vector3(0, 0, i);
+            Platform.PlatformType type = (i <= 3) ? Platform.PlatformType.Normal : Platform.PlatformType.Fragile;
+            Platform.RepairState state = Platform.RepairState.Broken;
+            
+            CreatePlatform(position, type, state);
+        }
+        
+        // GameManagerの足場リストを更新
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.RefreshPlatformList();
+        }
     }
     
     public void ClearBridge()
@@ -90,6 +96,16 @@ public class BridgeGenerator : MonoBehaviour
             }
         }
         _generatedPlatforms.Clear();
+    }
+    
+    private void ClearExistingPlatforms()
+    {
+        ClearExistingBridge();
+    }
+    
+    private bool ValidatePrefabs()
+    {
+        return normalPlatformPrefab != null && fragilePlatformPrefab != null;
     }
     
     private void GeneratePlatforms()
@@ -116,8 +132,6 @@ public class BridgeGenerator : MonoBehaviour
         
         // GameManagerに足場リストの更新を通知
         NotifyGameManager();
-        
-        Debug.Log($"Bridge generated with {bridgeLength} platforms under {parentTransform.name}. Fragile platforms at positions: {string.Join(", ", fragilePositions)}");
     }
     
     private Transform GetFloorParent()
@@ -133,14 +147,12 @@ public class BridgeGenerator : MonoBehaviour
         if (floorObject != null)
         {
             floorParent = floorObject.transform;
-            Debug.Log($"Found Floor object: {floorObject.name}");
             return floorParent;
         }
         
         // Floorオブジェクトが見つからない場合は新しく作成
         floorObject = new GameObject("Floor");
         floorParent = floorObject.transform;
-        Debug.Log("Created new Floor object as parent for platforms");
         return floorParent;
     }
     
@@ -172,6 +184,41 @@ public class BridgeGenerator : MonoBehaviour
         
         return fragilePositions;
     }
+    
+    private GameObject FindPlatformAtPosition(Vector3 position)
+    {
+        // 指定された位置にあるプラットフォームを検索
+        foreach (GameObject platform in _generatedPlatforms)
+        {
+            if (platform != null && platform.transform.position == position)
+            {
+                return platform;
+            }
+        }
+        return null;
+    }
+    
+    private void CreatePlatform(Vector3 position, Platform.PlatformType type, Platform.RepairState state)
+    {
+        GameObject prefab = (type == Platform.PlatformType.Normal) ? normalPlatformPrefab : fragilePlatformPrefab;
+        
+        if (prefab == null)
+        {
+            Debug.LogError("BridgeGenerator: Platform prefabs are not assigned!");
+            return;
+        }
+        
+        // プラットフォームを生成
+        GameObject platformObj = Instantiate(prefab, position, prefab.transform.rotation);
+        Platform platform = platformObj.GetComponent<Platform>();
+        
+        if (platform != null)
+        {
+            platform.type = type;
+            platform.repairState = state;
+            platform.isRepaired = false;
+        }
+    }
     #endregion
 
     #region Editor Methods
@@ -189,4 +236,51 @@ public class BridgeGenerator : MonoBehaviour
     }
     #endif
     #endregion
+
+    // チュートリアル足場のクリア機能を追加
+    public void ClearTutorialPlatforms()
+    {
+        // チュートリアル用足場（z=1-4）のみを削除
+        for (int i = _generatedPlatforms.Count - 1; i >= 0; i--)
+        {
+            GameObject platform = _generatedPlatforms[i];
+            if (platform != null && platform.name.StartsWith("Tutorial_"))
+            {
+                DestroyImmediate(platform);
+                _generatedPlatforms.RemoveAt(i);
+            }
+        }
+    }
+
+    public void GenerateBridgeWithDifficulty(GameManager.DifficultyConfig config)
+    {
+        // 既存の足場をクリア
+        ClearExistingPlatforms();
+        
+        if (!ValidatePrefabs())
+        {
+            Debug.LogError("BridgeGenerator: Platform prefabs are not assigned!");
+            return;
+        }
+        
+        // 足場を生成
+        for (int i = 1; i <= config.bridgeLength; i++)
+        {
+            Vector3 position = new Vector3(0, 0, i);
+            
+            // プラットフォームタイプをランダムに決定
+            Platform.PlatformType type = Random.Range(0f, 1f) < 0.7f ? 
+                Platform.PlatformType.Normal : Platform.PlatformType.Fragile;
+            
+            Platform.RepairState state = Platform.RepairState.Broken;
+            
+            CreatePlatform(position, type, state);
+        }
+        
+        // GameManagerの足場リストを更新
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.RefreshPlatformList();
+        }
+    }
 }
