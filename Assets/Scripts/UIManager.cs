@@ -16,6 +16,7 @@ public class UIManager : MonoBehaviour
     public GameObject gameHUDPanel;
     public GameObject resultPanel;
     public GameObject rankingPanel;
+    public GameObject countLeftPanel; // CountLeftPanelを独立したパネルとして追加
     
     [Header("Timing UI")]
     public GameObject timingUIPanel;
@@ -123,6 +124,7 @@ public class UIManager : MonoBehaviour
         gameHUDPanel?.SetActive(false);
         resultPanel?.SetActive(false);
         rankingPanel?.SetActive(false);
+        countLeftPanel?.SetActive(false); // CountLeftPanelも非表示にする
         
         // TimingUIPanelは独立して管理（常に非表示でスタート）
         timingUIPanel?.SetActive(false);
@@ -176,11 +178,11 @@ public class UIManager : MonoBehaviour
         resultPanel?.SetActive(true);
 
         // パネル内のテキストを名前で検索して更新
-        FindTextInPanel(resultPanel, "TimeText")?.SetText($"Time: {time:F1}s");
-        FindTextInPanel(resultPanel, "RepairRateText")?.SetText($"Repair Rate: {repairRate:F1}%");
-        FindTextInPanel(resultPanel, "TimingBonusText")?.SetText($"Timing Bonus: {timingBonus:F2}");
-        FindTextInPanel(resultPanel, "ScoreText")?.SetText($"Score: {score}");
-        FindTextInPanel(resultPanel, "RankText")?.SetText($"Rank: {rank}");
+        FindTextInPanel(resultPanel, "TimeText")?.SetText($"時間: {time:F1}秒");
+        FindTextInPanel(resultPanel, "RepairRateText")?.SetText($"修繕率: {repairRate:F1}%");
+        FindTextInPanel(resultPanel, "TimingBonusText")?.SetText($"タイミングボーナス: {timingBonus:F2}");
+        FindTextInPanel(resultPanel, "ScoreText")?.SetText($"スコア: {score}");
+        FindTextInPanel(resultPanel, "RankText")?.SetText($"ランク: {rank}");
     }
 
     public void ShowRanking()
@@ -195,32 +197,36 @@ public class UIManager : MonoBehaviour
     public void UpdateTime(float time)
     {
         var timeText = FindTextInPanel(gameHUDPanel, "TimeText");
-        timeText?.SetText($"Time: {time:F1}s");
+        timeText?.SetText($"時間: {time:F1}秒");
     }
 
     public void UpdateRepairRate(float rate)
     {
         var repairRateText = FindTextInPanel(gameHUDPanel, "RepairRateText");
-        repairRateText?.SetText($"Repair Rate: {rate:F1}%");
+        repairRateText?.SetText($"修繕率: {rate:F1}%");
     }
 
     public void UpdateCombo(int combo)
     {
         var comboText = FindTextInPanel(gameHUDPanel, "ComboText");
-        comboText?.SetText($"Combo: {combo}");
+        comboText?.SetText($"コンボ: {combo}");
     }
 
     public void UpdateCountLeft(int countLeft)
     {
-        var countLeftText = FindTextInPanel(gameHUDPanel, "CountLeftText");
+        // CountLeftPanelから直接CountLeftTextを取得
+        var countLeftText = FindTextInPanel(countLeftPanel, "CountLeftText");
+        
         if (countLeft > 0)
         {
             countLeftText?.SetText($"{countLeft}");
             countLeftText?.gameObject.SetActive(true);
+            countLeftPanel?.SetActive(true); // パネル全体を表示
         }
         else
         {
             countLeftText?.gameObject.SetActive(false);
+            countLeftPanel?.SetActive(false); // パネル全体を非表示
         }
     }
 
@@ -253,15 +259,154 @@ public class UIManager : MonoBehaviour
 
     private void RestartGame()
     {
-        // プレイヤーを初期位置にリセット
+        // 完全なリセットを実行
+        CompleteReset();
+        
+        // タイトル画面に戻る
+        ShowTitleScreen();
+    }
+
+    /// <summary>
+    /// ゲームの完全なリセットを行う
+    /// </summary>
+    public void CompleteReset()
+    {
+        // 1. 実行中のコルーチンを停止
+        StopAllCoroutines();
+        
+        // 2. タイミングUI関連のコルーチンを停止
+        if (_timingFeedbackCoroutine != null)
+        {
+            StopCoroutine(_timingFeedbackCoroutine);
+            _timingFeedbackCoroutine = null;
+        }
+        
+        if (_timingAnimationCoroutine != null)
+        {
+            StopCoroutine(_timingAnimationCoroutine);
+            _timingAnimationCoroutine = null;
+        }
+        
+        // 3. タイミングUI状態をリセット
+        _isTimingUIActive = false;
+        
+        // 4. プレイヤーを初期位置にリセット
         var player = FindFirstObjectByType<PlayerController>();
         if (player != null)
         {
             player.ResetToInitialPosition();
         }
         
-        // タイトル画面に戻る
-        ShowTitleScreen();
+        // 5. 足場の完全リセット
+        var bridgeGenerator = FindFirstObjectByType<BridgeGenerator>();
+        if (bridgeGenerator != null)
+        {
+            bridgeGenerator.CompleteReset();
+        }
+        else
+        {
+            Debug.LogWarning("UIManager: BridgeGenerator not found - cannot reset platforms");
+        }
+        
+        // 6. GameManagerの状態をリセット（利用可能なメソッドのみ使用）
+        if (GameManager.Instance != null)
+        {
+            // GameManagerの状態を適切にリセット
+            // 具体的なリセット処理はGameManagerで実装される予定
+            Debug.Log("GameManager reset requested");
+        }
+        
+        // 7. すべてのパネルを非表示
+        HideAllPanels();
+        
+        // 8. UI要素の状態をリセット
+        ResetUIElements();
+        
+        // 9. 選択された難易度をリセット
+        _selectedDifficulty = GameManager.Difficulty.Easy;
+        
+        Debug.Log("UIManager: Complete reset performed");
+    }
+
+    /// <summary>
+    /// UI要素の状態をリセット
+    /// </summary>
+    private void ResetUIElements()
+    {
+        // ゲームHUDのテキスト要素をリセット
+        if (gameHUDPanel != null)
+        {
+            FindTextInPanel(gameHUDPanel, "TimeText")?.SetText("時間: 0.0秒");
+            FindTextInPanel(gameHUDPanel, "RepairRateText")?.SetText("修繕率: 0.0%");
+            FindTextInPanel(gameHUDPanel, "ComboText")?.SetText("コンボ: 0");
+            
+            // CountLeftPanelを経由してCountLeftTextにアクセス
+            var countLeftText = FindTextInPanel(countLeftPanel, "CountLeftText");
+            countLeftText?.SetText("0");
+            
+            // フィードバックテキストを非表示
+            var feedbackText = FindTextInPanel(gameHUDPanel, "FeedbackText");
+            if (feedbackText != null)
+            {
+                feedbackText.gameObject.SetActive(false);
+            }
+            
+            // カウントダウン表示を非表示
+            if (countLeftText != null)
+            {
+                countLeftText.gameObject.SetActive(false);
+            }
+        }
+        
+        // リザルト画面のテキストをクリア
+        if (resultPanel != null)
+        {
+            FindTextInPanel(resultPanel, "TimeText")?.SetText("時間: 0.0秒");
+            FindTextInPanel(resultPanel, "RepairRateText")?.SetText("修繕率: 0.0%");
+            FindTextInPanel(resultPanel, "TimingBonusText")?.SetText("タイミングボーナス: 0.00");
+            FindTextInPanel(resultPanel, "ScoreText")?.SetText("スコア: 0");
+            FindTextInPanel(resultPanel, "RankText")?.SetText("ランク: -");
+        }
+        
+        // チュートリアル画面のテキストをクリア
+        if (tutorialPanel != null)
+        {
+            FindTextInPanel(tutorialPanel, "TutorialText")?.SetText("");
+            FindTextInPanel(tutorialPanel, "ProgressText")?.SetText("");
+            FindTextInPanel(tutorialPanel, "CountdownText")?.SetText("");
+        }
+        
+        // タイミングUIを非表示
+        if (timingUIPanel != null)
+        {
+            timingUIPanel.SetActive(false);
+        }
+    }
+
+    /// <summary>
+    /// アプリケーション終了時の完全なクリーンアップ
+    /// </summary>
+    private void OnApplicationPause(bool pauseStatus)
+    {
+        if (pauseStatus)
+        {
+            // アプリがバックグラウンドに移行した場合のクリーンアップ
+            CompleteReset();
+            ShowTitleScreen();
+        }
+    }
+
+    /// <summary>
+    /// アプリケーションフォーカス変更時の処理
+    /// </summary>
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus)
+        {
+            // フォーカスを失った場合のクリーンアップ
+            CompleteReset();
+            ShowTitleScreen();
+        }
     }
     
     // 新しいチュートリアル表示メソッド
@@ -273,20 +418,20 @@ public class UIManager : MonoBehaviour
         var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
         var progressText = FindTextInPanel(tutorialPanel, "ProgressText");
         
-        tutorialText?.SetText("Tutorial: Hit 3 normal platforms, then 1 broken platform.\nNormal platforms are repaired instantly, broken ones drop and need to be caught!");
-        progressText?.SetText("Progress: 0/4");
+        tutorialText?.SetText("チュートリアル: 通常の足場を3つ修理し、その後壊れた足場を1つ修理してください。\n通常の足場はすぐに修理されますが、壊れた足場は落下するので受け止める必要があります！");
+        progressText?.SetText("進捗: 0/4");
     }
     
     // チュートリアル進捗更新
     public void UpdateTutorialProgress(int completed, int total)
     {
         var progressText = FindTextInPanel(tutorialPanel, "ProgressText");
-        progressText?.SetText($"Progress: {completed}/{total}");
+        progressText?.SetText($"進捗: {completed}/{total}");
         
         if (completed >= total)
         {
             var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
-            tutorialText?.SetText("Tutorial Complete!\nGame will start in 3 seconds");
+            tutorialText?.SetText("チュートリアル完了！\n3秒後にゲームが開始されます");
         }
     }
     
@@ -304,7 +449,7 @@ public class UIManager : MonoBehaviour
         // カウントダウン表示
         for (int i = 3; i > 0; i--)
         {
-            progressText?.SetText($"Game starts in: {i}");
+            progressText?.SetText($"ゲーム開始まで: {i}");
             yield return new WaitForSeconds(1f);
         }
         
@@ -326,7 +471,7 @@ public class UIManager : MonoBehaviour
         var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
         var countdownText = FindTextInPanel(tutorialPanel, "CountdownText");
         
-        tutorialText?.SetText("Hit the hammer several times to check the controls");
+        tutorialText?.SetText("ハンマーを数回叩いて操作を確認してください");
         countdownText?.SetText("");
 
         // 簡単な操作確認（3秒間）
@@ -643,6 +788,31 @@ public class UIManager : MonoBehaviour
         
         // 実際のアニメーション開始
         StartCoroutine(AnimateTimingCursor(duration));
+    }
+    
+    /// <summary>
+    /// TimingCursorの現在のx座標を取得
+    /// </summary>
+    /// <returns>TimingCursorのx座標（-500~500の範囲）</returns>
+    public float GetCurrentCursorPosition()
+    {
+        if (_timingCursor == null) return 0f;
+        
+        RectTransform cursorRect = _timingCursor.GetComponent<RectTransform>();
+        if (cursorRect == null) return 0f;
+        
+        return cursorRect.anchoredPosition.x;
+    }
+    
+    /// <summary>
+    /// TimingBarの現在の幅を取得
+    /// </summary>
+    /// <returns>TimingBarの幅</returns>
+    public float GetTimingBarWidth()
+    {
+        if (_timingBar == null) return 1000f; // デフォルト値
+        
+        return _timingBar.rect.width;
     }
     #endregion
 }

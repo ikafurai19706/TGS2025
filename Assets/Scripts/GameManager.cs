@@ -50,6 +50,7 @@ public class GameManager : MonoBehaviour
     private float _gameStartTime;
     private int _totalRepairs;
     private int _successfulRepairs;
+    private float _totalAccuracy; // 正確度の累計を追加
     private float _totalTimingBonus;
     private int _currentCombo;
     private int _maxCombo;
@@ -171,9 +172,10 @@ public class GameManager : MonoBehaviour
         return _currentState == GameState.Tutorial;
     }
     
-    public void OnRepairAttempt(TimingResult timing)
+    public void OnRepairAttempt(TimingResult timing, float accuracy)
     {
         _totalRepairs++;
+        _totalAccuracy += accuracy; // 正確度を累計に追加
         
         float bonus = 0f;
         string feedbackText = "";
@@ -184,28 +186,28 @@ public class GameManager : MonoBehaviour
             case TimingResult.Perfect:
                 bonus = 0.02f;
                 feedbackText = "PERFECT!";
-                feedbackColor = Color.yellow;
+                feedbackColor = Color.green;
                 _successfulRepairs++;
                 _currentCombo++;
                 break;
             case TimingResult.Good:
                 bonus = 0.01f;
                 feedbackText = "GOOD";
-                feedbackColor = Color.green;
+                feedbackColor = Color.yellow;
                 _successfulRepairs++;
                 _currentCombo++;
                 break;
             case TimingResult.Bad:
                 bonus = -0.01f;
                 feedbackText = "BAD";
-                feedbackColor = Color.orange;
-                // Badは失敗として扱う（_successfulRepairs++を削除）
+                feedbackColor = Color.red;
+                // Badは成功としてカウントしないが、ゲーム続行は可能
                 _currentCombo = 0;
                 break;
             case TimingResult.Miss:
                 bonus = -0.1f;
                 feedbackText = "MISS";
-                feedbackColor = Color.red;
+                feedbackColor = Color.purple;
                 _currentCombo = 0;
                 // Miss時は橋崩落を開始
                 TriggerBridgeCollapse();
@@ -223,11 +225,11 @@ public class GameManager : MonoBehaviour
             UIManager.Instance.UpdateRepairRate(GetRepairRate());
         }
         
-        // 修繕率チェック
-        if (GetRepairRate() < 50f && _totalRepairs > 1)
-        {
-            EndGame(false);
-        }
+        // 修繕率チェックを無効化 - Bad以上は続行、Missのみ橋崩落の仕様に合わせる
+        // if (GetRepairRate() < 50f && _totalRepairs > 1)
+        // {
+        //     EndGame(false);
+        // }
     }
     
     public void OnBridgeComplete()
@@ -294,11 +296,12 @@ public class GameManager : MonoBehaviour
     #region Private Methods
     private IEnumerator ChainCollapseBridge()
     {
-        // プレイヤーの移動を停止
+        // プレイヤーの移動を停止し、Rotation Constraintを解除
         var player = FindFirstObjectByType<PlayerController>();
         if (player != null)
         {
             player.SetCanMove(false);
+            player.OnBridgeCollapse(); // 橋崩落時にRotation Constraintを解除
         }
 
         // すべての足場を順次崩落
@@ -340,7 +343,8 @@ public class GameManager : MonoBehaviour
     {
         _totalRepairs = 0;
         _successfulRepairs = 0;
-        _totalTimingBonus = 1f; // 初期値1.0
+        _totalAccuracy = 0f; // 正確度の初期化
+        _totalTimingBonus = 0f; // 初期値を0に修正
         _currentCombo = 0;
         _maxCombo = 0;
         _isGameOver = false;
@@ -403,7 +407,8 @@ public class GameManager : MonoBehaviour
     private float GetRepairRate()
     {
         if (_totalRepairs == 0) return 100f;
-        return (_successfulRepairs / (float)_totalRepairs) * 100f;
+        // 正確度の平均を修繕率として使用（より詳細な計算）
+        return _totalAccuracy / _totalRepairs;
     }
     
     private int CalculateScore(float actualTime, float repairRate, float timingBonus)

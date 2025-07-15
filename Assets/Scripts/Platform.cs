@@ -644,9 +644,9 @@ public class Platform : MonoBehaviour
             
             // 回転も追加
             Vector3 randomTorque = new Vector3(
-                Random.Range(-5f, 5f),
-                Random.Range(-5f, 5f),
-                Random.Range(-5f, 5f)
+                Random.Range(-3f, 3f),
+                Random.Range(-3f, 3f),
+                Random.Range(-3f, 3f)
             );
             rb.AddTorque(randomTorque, ForceMode.Impulse);
         }
@@ -682,33 +682,72 @@ public class Platform : MonoBehaviour
     #region Private Methods - Catch Accuracy
     private float CalculateCatchAccuracy(Vector3 stoppedPosition)
     {
-        // 停止位置と元の位置のY座標の差を計算
-        float heightDifference = Mathf.Abs(stoppedPosition.y - _originalPosition.y);
+        // TimingCursorの位置に基づいて正確度を計算
+        float cursorX = 0f;
+        float barWidth = 1000f; // デフォルト値
         
-        // 高さの許容誤差内であれば成功とみなす
-        if (heightDifference <= allowedHeightError)
+        if (UIManager.Instance != null)
         {
-            return 100f; // 成功
+            cursorX = UIManager.Instance.GetCurrentCursorPosition();
+            barWidth = UIManager.Instance.GetTimingBarWidth();
         }
         
-        // 誤差に応じて成功率を減少（線形補間）
-        float accuracy = Mathf.Lerp(100f, 0f, heightDifference / allowedHeightError);
-        return accuracy;
+        // TimingBarの実際の幅の半分を最大値として使用
+        float maxDistance = barWidth / 2f;
+        
+        // x座標(-maxDistance~maxDistance)を正確度(0~100%)に変換
+        // x=0で100%、|x|=maxDistanceで0%
+        float accuracyPercentage = Mathf.Max(0f, (maxDistance - Mathf.Abs(cursorX)) / maxDistance * 100f);
+        
+        return accuracyPercentage;
     }
 
     private string EvaluateCatchJudgment(float catchAccuracy)
     {
-        if (catchAccuracy >= 90f)
+        // 現在の難易度に応じた判定閾値を設定
+        float perfectThreshold, goodThreshold, badThreshold;
+        
+        GameManager.Difficulty currentDifficulty = GameManager.Difficulty.Normal;
+        if (GameManager.Instance != null)
+        {
+            currentDifficulty = GameManager.Instance.GetCurrentDifficulty();
+        }
+        
+        switch (currentDifficulty)
+        {
+            case GameManager.Difficulty.Easy:
+                perfectThreshold = 80f;  // 80%以上でPerfect
+                goodThreshold = 60f;     // 60%以上でGood
+                badThreshold = 40f;      // 40%以上でBad
+                break;
+            case GameManager.Difficulty.Normal:
+                perfectThreshold = 85f;  // 85%以上でPerfect
+                goodThreshold = 67.5f;   // 67.5%以上でGood
+                badThreshold = 50f;      // 50%以上でBad
+                break;
+            case GameManager.Difficulty.Hard:
+                perfectThreshold = 90f;  // 90%以上でPerfect
+                goodThreshold = 75f;     // 75%以上でGood
+                badThreshold = 60f;      // 60%以上でBad
+                break;
+            default:
+                perfectThreshold = 85f;
+                goodThreshold = 67.5f;
+                badThreshold = 50f;
+                break;
+        }
+        
+        if (catchAccuracy >= perfectThreshold)
         {
             return "Perfect";
         }
-        else if (catchAccuracy >= 75f)
-        {
-            return "Great";
-        }
-        else if (catchAccuracy >= 50f)
+        else if (catchAccuracy >= goodThreshold)
         {
             return "Good";
+        }
+        else if (catchAccuracy >= badThreshold)
+        {
+            return "Bad";
         }
         else
         {

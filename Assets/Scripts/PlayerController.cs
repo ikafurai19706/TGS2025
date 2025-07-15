@@ -41,6 +41,8 @@ public class PlayerController : MonoBehaviour
     
     // 初期位置を記録
     private Vector3 _initialPosition;
+    private Vector3 _initialCameraPosition; // カメラの初期位置を記録
+    private Coroutine _cameraShakeCoroutine; // カメラ振動のコルーチンを追跡
     #endregion
 
     #region Constants
@@ -103,6 +105,12 @@ public class PlayerController : MonoBehaviour
         // 初期位置を記録
         _initialPosition = transform.position;
         
+        // カメラの初期ローカル位置を記録
+        if (cameraTransform != null)
+        {
+            _initialCameraPosition = cameraTransform.localPosition;
+        }
+        
         // RepairTimingSystemコンポーネントは不要になったため削除
         // タイミングシステムは統合されました
     }
@@ -155,10 +163,6 @@ public class PlayerController : MonoBehaviour
     {
         if (!_isInTimingChallenge) return;
 
-        // タイミングをチェック
-        float elapsedTime = Time.time - _timingStartTime;
-        float normalizedTime = elapsedTime / timingWindowDuration;
-
         // 現在修理中の足場の落下を停止し、同時にキャッチ処理を実行
         if (_targetPlatform != null)
         {
@@ -179,16 +183,51 @@ public class PlayerController : MonoBehaviour
             Debug.LogWarning("ProcessTimingInput: _targetPlatform is null!");
         }
 
-        GameManager.TimingResult result = EvaluateTiming(normalizedTime);
+        // UIManagerからTimingCursorの現在位置を取得して判定
+        GameManager.TimingResult result = EvaluateTimingByCursorPosition();
+        
+        Debug.Log($"Timing Result: {result}");
+        
+        // Miss判定の場合のみ橋崩落を発生させる
+        if (result == GameManager.TimingResult.Miss)
+        {
+            Debug.Log("Miss判定: 橋崩落処理を開始");
+            // Miss時は足場をキャッチできずに橋崩落
+            if (_targetPlatform != null)
+            {
+                _targetPlatform.MissedCatch();
+            }
+        }
+        else
+        {
+            Debug.Log($"{result}判定: ゲーム続行");
+        }
+        
+        // 結果に関係なくタイミングチャレンジを完了
         CompleteTimingChallenge(result);
     }
     
-    private GameManager.TimingResult EvaluateTiming(float normalizedTime)
+    private GameManager.TimingResult EvaluateTimingByCursorPosition()
     {
-        // カーソル位置に依存した正確な百分率計算
-        float perfectCenter = 0.5f; // 中央位置（50%）
-        float distanceFromCenter = Mathf.Abs(normalizedTime - perfectCenter);
-        float accuracyPercentage = (1f - (distanceFromCenter / 0.5f)) * 100f; // 中央からの距離を百分率に変換
+        // UIManagerからTimingCursorの現在のx座標を取得
+        float cursorX = 0f;
+        float barWidth = 1000f; // デフォルト値
+        
+        if (UIManager.Instance != null)
+        {
+            cursorX = UIManager.Instance.GetCurrentCursorPosition();
+            barWidth = UIManager.Instance.GetTimingBarWidth();
+        }
+        
+        // TimingBarの実際の幅の半分を最大値として使用
+        float maxDistance = barWidth / 2f;
+        
+        // x座標(-maxDistance~maxDistance)を正確度(0~100%)に変換
+        // x=0で100%、|x|=maxDistanceで0%
+        float accuracyPercentage = Mathf.Max(0f, (maxDistance - Mathf.Abs(cursorX)) / maxDistance * 100f);
+        
+        // デバッグログを追加
+        Debug.Log($"Cursor Position: {cursorX}, Bar Width: {barWidth}, Max Distance: {maxDistance}, Accuracy: {accuracyPercentage:F1}%");
         
         // 現在の難易度に応じた判定閾値を設定
         float perfectThreshold, goodThreshold, badThreshold;
@@ -217,7 +256,7 @@ public class PlayerController : MonoBehaviour
                 break;
         }
         
-        // 百分率に基づいた判定
+        // 正確度に基づいた判定
         if (accuracyPercentage >= perfectThreshold)
         {
             return GameManager.TimingResult.Perfect;
@@ -384,8 +423,30 @@ public class PlayerController : MonoBehaviour
                 }
             }
             
+            // 元のアニメーション付き移動に戻す
             StartCoroutine(MoveWithHammerSwing(MOVEMENT_DISTANCE, MOVEMENT_DURATION));
         }
+    }
+
+    /// <summary>
+    /// テレポート式移動（瞬間移動）
+    /// </summary>
+    private void TeleportMove()
+    {
+        _isMoving = true;
+        
+        // ハンマーを振る演出のみ実行
+        PerformHammerSwing();
+        
+        // 瞬間移動（1メートル前方にテレポート）
+        Vector3 currentPosition = transform.position;
+        Vector3 newPosition = currentPosition + new Vector3(0, 0, 1.0f);
+        transform.position = newPosition;
+        
+        // 移動状態をリセット
+        _isMoving = false;
+        
+        Debug.Log($"PlayerController: Teleported from {currentPosition} to {newPosition}");
     }
 
     private void HandleFallingPlatformCatch()
@@ -458,11 +519,14 @@ public class PlayerController : MonoBehaviour
     {
         _isInTimingChallenge = false;
         
+        // 正確度を取得
+        float accuracy = GetLastCalculatedAccuracy();
+        
         // チュートリアル時はGameManagerのスコア処理をスキップ
         if (GameManager.Instance != null && !GameManager.Instance.IsTutorialMode())
         {
-            // 通常ゲーム中のみGameManagerに結果を通知
-            GameManager.Instance.OnRepairAttempt(result);
+            // 通常ゲーム中のみGameManagerに結果と正確度を通知
+            GameManager.Instance.OnRepairAttempt(result, accuracy);
         }
         
         // 結果に応じて処理を分岐
@@ -496,7 +560,26 @@ public class PlayerController : MonoBehaviour
             return;
         }
     }
-
+    
+    private float GetLastCalculatedAccuracy()
+    {
+        // UIManagerからTimingCursorの現在のx座標を取得して正確度を計算
+        float cursorX = 0f;
+        float barWidth = 1000f;
+        
+        if (UIManager.Instance != null)
+        {
+            cursorX = UIManager.Instance.GetCurrentCursorPosition();
+            barWidth = UIManager.Instance.GetTimingBarWidth();
+        }
+        
+        // TimingBarの実際の幅の半分を最大値として使用
+        float maxDistance = barWidth / 2f;
+        
+        // x座標(-maxDistance~maxDistance)を正確度(0~100%)に変換
+        return Mathf.Max(0f, (maxDistance - Mathf.Abs(cursorX)) / maxDistance * 100f);
+    }
+    
     private void StartPlatformRepair(Platform platform)
     {
         _isRepairing = true;
@@ -602,6 +685,28 @@ public class PlayerController : MonoBehaviour
         return null;
     }
 
+    private Platform FindPlatformAtPositionWithWideSearch(Vector3 position)
+    {
+        // 指定位置周辺の広い範囲でPlatformコンポーネントを持つオブジェクトを検索
+        Collider[] colliders = Physics.OverlapSphere(position, 1.5f);
+        
+        foreach (Collider collider in colliders)
+        {
+            Platform platform = collider.GetComponent<Platform>();
+            if (platform != null)
+            {
+                // 位置がほぼ一致するかチェック（許容誤差を0.5fに拡大）
+                Vector3 platformPos = platform.transform.position;
+                if (Vector3.Distance(platformPos, position) < 0.5f)
+                {
+                    return platform;
+                }
+            }
+        }
+        
+        return null;
+    }
+
     private void TryCatchFallingPlatform()
     {
         StopCurrentSwing();
@@ -676,7 +781,12 @@ public class PlayerController : MonoBehaviour
     {
         if (cameraTransform != null)
         {
-            StartCoroutine(CameraShake(CAMERA_SHAKE_DURATION, CAMERA_SHAKE_MAGNITUDE));
+            // 既に振動中のコルーチンがあれば停止
+            if (_cameraShakeCoroutine != null)
+            {
+                StopCoroutine(_cameraShakeCoroutine);
+            }
+            _cameraShakeCoroutine = StartCoroutine(CameraShake(CAMERA_SHAKE_DURATION, CAMERA_SHAKE_MAGNITUDE));
         }
     }
 
@@ -685,7 +795,12 @@ public class PlayerController : MonoBehaviour
     {
         if (cameraTransform != null)
         {
-            StartCoroutine(CameraShake(COLLAPSE_SHAKE_DURATION, COLLAPSE_SHAKE_MAGNITUDE));
+            // 既に振動中のコルーチンがあれば停止
+            if (_cameraShakeCoroutine != null)
+            {
+                StopCoroutine(_cameraShakeCoroutine);
+            }
+            _cameraShakeCoroutine = StartCoroutine(CameraShake(COLLAPSE_SHAKE_DURATION, COLLAPSE_SHAKE_MAGNITUDE));
         }
     }
 
@@ -697,24 +812,45 @@ public class PlayerController : MonoBehaviour
     
     public void OnPlatformCollapse()
     {
-        StartCoroutine(CameraShake(COLLAPSE_SHAKE_DURATION, COLLAPSE_SHAKE_MAGNITUDE));
+        // 既に振動中のコルーチンがあれば停止
+        if (_cameraShakeCoroutine != null)
+        {
+            StopCoroutine(_cameraShakeCoroutine);
+        }
+        _cameraShakeCoroutine = StartCoroutine(CameraShake(COLLAPSE_SHAKE_DURATION, COLLAPSE_SHAKE_MAGNITUDE));
     }
 
     private IEnumerator CameraShake(float duration, float magnitude)
     {
-        Vector3 originalPos = cameraTransform.localPosition;
+        // 振動中の他のカメラシェイクを停止
+        if (cameraTransform == null) yield break;
+        
+        // 既に振動中のコルーチンがあれば停止
+        if (_cameraShakeCoroutine != null)
+        {
+            StopCoroutine(_cameraShakeCoroutine);
+            _cameraShakeCoroutine = null;
+        }
+        
         float elapsed = 0f;
         
         while (elapsed < duration)
         {
             float x = Random.Range(-0.5f, 0.5f) * magnitude;
             float y = Random.Range(-0.5f, 0.5f) * magnitude;
-            cameraTransform.localPosition = originalPos + new Vector3(x, y, 0);
+            
+            // 常に初期位置を基準に振動を適用（親オブジェクトの移動に影響されない）
+            cameraTransform.localPosition = _initialCameraPosition + new Vector3(x, y, 0);
+            
             elapsed += Time.deltaTime;
             yield return null;
         }
         
-        cameraTransform.localPosition = originalPos;
+        // 振動終了後は確実に初期位置に戻す
+        cameraTransform.localPosition = _initialCameraPosition;
+        
+        // コルーチン完了時にnullに設定
+        _cameraShakeCoroutine = null;
     }
 
     private IEnumerator MoveZWithEaseOut(float distance, float duration)
@@ -763,8 +899,8 @@ public class PlayerController : MonoBehaviour
         int nextPlatformIndex = GetNextPlatformIndexFromPosition(playerZ);
         Vector3 nextPlatformPosition = new Vector3(0, 0, nextPlatformIndex);
         
-        // 次の足場が存在するかチェック
-        Platform nextPlatform = FindPlatformAtPosition(nextPlatformPosition);
+        // 次の足場が存在するかチェック（Y軸の検索範囲を広げる）
+        Platform nextPlatform = FindPlatformAtPositionWithWideSearch(nextPlatformPosition);
         
         // 次の足場が存在しない場合、ゲーム完了
         if (nextPlatform == null)
@@ -789,8 +925,12 @@ public class PlayerController : MonoBehaviour
     #region Player Reset
     public void ResetToInitialPosition()
     {
-        // プレイヤーを初期位置に戻す
-        transform.position = _initialPosition;
+        // プレイヤーを確実に初期位置(0,0.6,0)に戻す
+        transform.position = new Vector3(0, 0.6f, 0);
+        transform.rotation = Quaternion.identity;
+        
+        // 角度Constraintを復活
+        ResetRotationConstraints();
         
         // プレイヤーの状態をリセット
         _canMove = true;
@@ -818,6 +958,45 @@ public class PlayerController : MonoBehaviour
         if (hammer != null)
         {
             hammer.localRotation = Quaternion.Euler(45, hammer.localEulerAngles.y, hammer.localEulerAngles.z);
+        }
+        
+        // 物理的な速度もリセット
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+        
+        Debug.Log("PlayerController: Reset to initial position (0,0.6,0)");
+    }
+
+    /// <summary>
+    /// 橋崩落時にプレイヤーのRotation Constraintを全て解除
+    /// </summary>
+    public void OnBridgeCollapse()
+    {
+        if (_rigidbody != null)
+        {
+            // 全てのRotation Constraintを解除
+            _rigidbody.constraints = RigidbodyConstraints.None;
+            
+            Debug.Log("PlayerController: Bridge collapse - all rotation constraints removed");
+        }
+    }
+
+    /// <summary>
+    /// Rotation Constraintをリセット（通常の制約に戻す）
+    /// </summary>
+    public void ResetRotationConstraints()
+    {
+        if (_rigidbody != null)
+        {
+            // 通常の制約に戻す（位置は固定、回転は制限）
+            _rigidbody.constraints = RigidbodyConstraints.FreezeRotationX | 
+                                   RigidbodyConstraints.FreezeRotationZ;
+            
+            Debug.Log("PlayerController: Rotation constraints reset to normal");
         }
     }
     #endregion
