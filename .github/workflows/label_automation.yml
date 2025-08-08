@@ -1,120 +1,49 @@
-name: Issue Automation
-
+name: issue label automation
 on:
   issues:
     types:
-      - opened
       - reopened
+      - opened
       - closed
       - assigned
-      - labeled
-
 env:
   PROJECT_NAME: Project of TGS2025
-
 jobs:
-  issue_automation:
+  issue_labels:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: read
     steps:
-      # Issue opened - Add Todo label
-      - name: Add Todo label on issue open
-        if: github.event.action == 'opened'
-        uses: andymckay/labeler@1.0.4
+      - name: Add Todo label
+        if: "github.event.action == 'opened'"
+        uses: andymckay/labeler@1.0.2
         with:
           add-labels: "Status: Todo"
           remove-labels: "Status: In Progress, Status: Completed, Status: Cancelled"
           repo-token: ${{ secrets.GHPROJECT_TOKEN }}
-
-      # Issue assigned or reopened - Add In Progress label and move project card
-      - name: Add In Progress label on assignment/reopen
-        if: github.event.action == 'assigned' || github.event.action == 'reopened'
-        uses: andymckay/labeler@1.0.4
+      - name: Add In Progress label
+        if: "github.event.action == 'assigned' || github.event.action == 'reopened'"
+        uses: andymckay/labeler@1.0.2
         with:
           add-labels: "Status: In Progress"
           remove-labels: "Status: Todo, Status: Completed, Status: Cancelled"
           repo-token: ${{ secrets.GHPROJECT_TOKEN }}
-
-      - name: Move project card to In Progress
-        if: github.event.action == 'assigned' || github.event.action == 'reopened'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
-        with:
-          project-url: https://github.com/users/ikafurai19706/projects/3
-          github-token: ${{ secrets.GHPROJECT_TOKEN }}
-          field-name: Status
-          field-value: In Progress
-
-      # Issue closed as completed - Add Completed label
-      - name: Add Completed label on issue completion
-        if: github.event.action == 'closed' && github.event.issue.state_reason == 'completed'
-        uses: andymckay/labeler@1.0.4
+      - name: Add Completed label
+        if: "github.event.action == 'closed' && github.event.issue.state_reason == 'completed'"
+        uses: andymckay/labeler@1.0.2
         with:
           add-labels: "Status: Completed"
           remove-labels: "Status: In Progress, Status: Todo, Status: Cancelled"
           repo-token: ${{ secrets.GHPROJECT_TOKEN }}
 
-      - name: Move project card to Completed
-        if: github.event.action == 'closed' && github.event.issue.state_reason == 'completed'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
-        with:
-          project-url: https://github.com/users/ikafurai19706/projects/3
-          github-token: ${{ secrets.GHPROJECT_TOKEN }}
-          field-name: Status
-          field-value: Completed
-
-      # Issue closed as not planned - Add Cancelled label
-      - name: Add Cancelled label on issue not planned
-        if: github.event.action == 'closed' && github.event.issue.state_reason == 'not_planned'
-        uses: andymckay/labeler@1.0.4
-        with:
-          add-labels: "Status: Cancelled"
-          remove-labels: "Status: In Progress, Status: Todo, Status: Completed"
-          repo-token: ${{ secrets.GHPROJECT_TOKEN }}
-
-      - name: Move project card to Cancelled
-        if: github.event.action == 'closed' && github.event.issue.state_reason == 'not_planned'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
-        with:
-          project-url: https://github.com/users/ikafurai19706/projects/3
-          github-token: ${{ secrets.GHPROJECT_TOKEN }}
-          field-name: Status
-          field-value: Cancelled
-
-      # Label manually added - Move project card based on label
-      - name: Move project card when Cancelled label added
-        if: github.event.action == 'labeled' && github.event.label.name == 'Status: Cancelled'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
-        with:
-          project-url: https://github.com/users/ikafurai19706/projects/3
-          github-token: ${{ secrets.GHPROJECT_TOKEN }}
-          field-name: Status
-          field-value: Cancelled
-
-      - name: Move project card when Todo label added
-        if: github.event.action == 'labeled' && github.event.label.name == 'Status: Todo'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
-        with:
-          project-url: https://github.com/users/ikafurai19706/projects/3
-          github-token: ${{ secrets.GHPROJECT_TOKEN }}
-          field-name: Status
-          field-value: Todo
-
-      - name: Move project card when In Progress label added
-        if: github.event.action == 'labeled' && github.event.label.name == 'Status: In Progress'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
+  move_assigned_card:
+    runs-on: ubuntu-latest
+    name: Move assigned card
+    steps:
+      - uses: nipe0324/update-project-v2-item-field@v2.0.1
+        if: "github.event.action == 'assigned'"
         with:
           project-url: https://github.com/users/ikafurai19706/projects/3
           github-token: ${{ secrets.GHPROJECT_TOKEN }}
           field-name: Status
           field-value: In Progress
-
-      - name: Move project card when Completed label added
-        if: github.event.action == 'labeled' && github.event.label.name == 'Status: Completed'
-        uses: nipe0324/update-project-v2-item-field@v2.1.0
-        with:
-          project-url: https://github.com/users/ikafurai19706/projects/3
-          github-token: ${{ secrets.GHPROJECT_TOKEN }}
-          field-name: Status
-          field-value: Completed
