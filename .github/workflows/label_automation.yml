@@ -1,0 +1,49 @@
+name: issue label automation
+on:
+  issues:
+    types:
+      - reopened
+      - opened
+      - closed
+      - assigned
+env:
+  PROJECT_NAME: Project of TGS2025
+jobs:
+  issue_labels:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Add Todo label
+        if: "github.event.action == 'opened'"
+        uses: andymckay/labeler@1.0.2
+        with:
+          add-labels: "Status: Todo"
+          remove-labels: "Status: In Progress, Status: Completed, Status: Cancelled"
+          repo-token: ${{ secrets.GHPROJECT_TOKEN }}
+      - name: Add In Progress label
+        if: "github.event.action == 'assigned' || github.event.action == 'reopened'"
+        uses: andymckay/labeler@1.0.2
+        with:
+          add-labels: "Status: In Progress"
+          remove-labels: "Status: Todo, Status: Completed, Status: Cancelled"
+          repo-token: ${{ secrets.GHPROJECT_TOKEN }}
+      - name: Add Completed label
+        if: "github.event.action == 'closed' && github.event.issue.state_reason == 'completed'"
+        uses: andymckay/labeler@1.0.2
+        with:
+          add-labels: "Status: Completed"
+          remove-labels: "Status: In Progress, Status: Todo, Status: Cancelled"
+          repo-token: ${{ secrets.GHPROJECT_TOKEN }}
+
+  move_assigned_card:
+    runs-on: ubuntu-latest
+    name: Move assigned card
+    steps:
+      - uses: nipe0324/update-project-v2-item-field@v2.0.1
+        if: "github.event.action == 'assigned'"
+        with:
+          project-url: https://github.com/users/ikafurai19706/projects/3
+          github-token: ${{ secrets.GHPROJECT_TOKEN }}
+          field-name: Status
+          field-value: In Progress
