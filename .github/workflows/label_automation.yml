@@ -6,8 +6,6 @@ on:
       - opened
       - closed
       - assigned
-env:
-  PROJECT_NAME: Project of TGS2025
 jobs:
   issue_labels:
     runs-on: ubuntu-latest
