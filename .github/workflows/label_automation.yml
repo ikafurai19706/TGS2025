@@ -35,6 +35,7 @@ jobs:
           repo-token: ${{ secrets.GHPROJECT_TOKEN }}
 
   move_assigned_card:
+    if: github.event.action == 'assigned'
     runs-on: ubuntu-latest
     name: Move assigned card
     steps:
