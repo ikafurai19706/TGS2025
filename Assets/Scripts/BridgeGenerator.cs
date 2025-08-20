@@ -45,7 +45,18 @@ public class BridgeGenerator : MonoBehaviour
             return;
         }
         
-        GeneratePlatforms();
+        // GameManagerから難易度設定を取得して橋を生成
+        if (GameManager.Instance != null)
+        {
+            GameManager.DifficultyConfig config = GameManager.Instance.GetCurrentDifficultyConfig();
+            GenerateBridgeWithDifficulty(config);
+        }
+        else
+        {
+            // フォールバック：GameManagerがない場合はデフォルト設定で生成
+            Debug.LogWarning("BridgeGenerator: GameManager not found, using default bridge length");
+            GeneratePlatforms();
+        }
     }
     
     // チュートリアル用足場を生成するメソッドを追加
@@ -193,26 +204,85 @@ public class BridgeGenerator : MonoBehaviour
     /// </summary>
     private void GeneratePlatforms()
     {
-        int fragileCount = 0;
-        int nextFragileIndex = Random.Range(minFragileInterval, maxFragileInterval + 1);
+        // 橋長と同じ長さのリストを作成（0: Normal, 1: Fragile）
+        List<int> platformTypes = new List<int>();
         
+        // 初期化：すべてNormal（0）で埋める
+        for (int i = 0; i < bridgeLength; i++)
+        {
+            platformTypes.Add(0);
+        }
+        
+        // 難易度に応じたFragile足場の数を決定
+        int fragileCount = GetFragileCountForDifficulty();
+        
+        // 橋長がFragile足場数より少ない場合の安全チェック
+        if (fragileCount > bridgeLength)
+        {
+            Debug.LogWarning($"BridgeGenerator: Requested fragile count ({fragileCount}) exceeds bridge length ({bridgeLength}). Setting to bridge length.");
+            fragileCount = bridgeLength;
+        }
+        
+        // ランダムにFragile足場の位置を決定
+        List<int> availableIndices = new List<int>();
+        for (int i = 0; i < bridgeLength; i++)
+        {
+            availableIndices.Add(i);
+        }
+        
+        List<int> selectedFragilePositions = new List<int>(); // デバッグ用
+        
+        // 指定された数だけFragile足場を配置
+        for (int i = 0; i < fragileCount && availableIndices.Count > 0; i++)
+        {
+            int randomIndex = Random.Range(0, availableIndices.Count);
+            int selectedPosition = availableIndices[randomIndex];
+            platformTypes[selectedPosition] = 1; // Fragileに設定
+            selectedFragilePositions.Add(selectedPosition); // デバッグ用記録
+            availableIndices.RemoveAt(randomIndex); // 重複防止のため削除
+        }
+        
+        // 実際に配置されたFragile足場の数を検証
+        int actualFragileCount = 0;
+        for (int i = 0; i < platformTypes.Count; i++)
+        {
+            if (platformTypes[i] == 1) actualFragileCount++;
+        }
+        
+        // 足場を生成
+        Debug.Log($"BridgeGenerator: Starting platform generation for {bridgeLength} platforms");
         for (int i = 0; i < bridgeLength; i++)
         {
             Vector3 position = startPosition + new Vector3(0, 0, i * platformSpacing);
-            
-            // 壊れやすい足場を配置するかどうかを決定
-            bool shouldBeFrangile = (i == nextFragileIndex) && (fragileCount < bridgeLength / 3);
-            
-            Platform.PlatformType type = shouldBeFrangile ? Platform.PlatformType.Fragile : Platform.PlatformType.Normal;
+            Platform.PlatformType type = (platformTypes[i] == 1) ? Platform.PlatformType.Fragile : Platform.PlatformType.Normal;
             Platform.RepairState state = Platform.RepairState.Broken;
             
+            Debug.Log($"BridgeGenerator: Creating platform {i+1}/{bridgeLength} at position {position} - Type: {type}");
             CreatePlatform(position, type, state);
-            
-            if (shouldBeFrangile)
-            {
-                fragileCount++;
-                nextFragileIndex = i + Random.Range(minFragileInterval, maxFragileInterval + 1);
-            }
+        }
+        
+        Debug.Log($"BridgeGenerator: Platform generation loop completed. Generated {_generatedPlatforms.Count} platforms total");
+        
+        // デバッグ情報を出力
+        Debug.Log($"BridgeGenerator: Bridge generation completed!");
+        Debug.Log($"  - Bridge Length: {bridgeLength}");
+        Debug.Log($"  - Requested Fragile Count: {fragileCount}");
+        Debug.Log($"  - Actual Fragile Count: {actualFragileCount}");
+        Debug.Log($"  - Fragile Positions: [{string.Join(", ", selectedFragilePositions)}]");
+        Debug.Log($"  - Generated Platforms Count: {_generatedPlatforms.Count}");
+        
+        // 最後の足場の情報を確認
+        if (_generatedPlatforms.Count > 0)
+        {
+            GameObject lastPlatform = _generatedPlatforms[_generatedPlatforms.Count - 1];
+            Debug.Log($"  - Last Platform Position: {lastPlatform.transform.position}");
+            Debug.Log($"  - Expected Last Position: {startPosition + new Vector3(0, 0, (bridgeLength - 1) * platformSpacing)}");
+        }
+        
+        // 不一致がある場合は警告
+        if (actualFragileCount != fragileCount)
+        {
+            Debug.LogError($"BridgeGenerator: Fragile count mismatch! Expected: {fragileCount}, Actual: {actualFragileCount}");
         }
         
         // GameManagerの足場リストを更新
@@ -220,6 +290,31 @@ public class BridgeGenerator : MonoBehaviour
         {
             GameManager.Instance.RefreshPlatformList();
         }
+    }
+    
+    /// <summary>
+    /// 現在の難易度に応じてFragile足場の数を取得
+    /// </summary>
+    private int GetFragileCountForDifficulty()
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Difficulty currentDifficulty = GameManager.Instance.GetCurrentDifficulty();
+            switch (currentDifficulty)
+            {
+                case GameManager.Difficulty.Easy:
+                    return 3;
+                case GameManager.Difficulty.Normal:
+                    return 4;
+                case GameManager.Difficulty.Hard:
+                    return 5;
+                default:
+                    return 4; // デフォルトはNormal
+            }
+        }
+        
+        // GameManagerが利用できない場合のフォールバック
+        return 4;
     }
     
     /// <summary>
@@ -308,18 +403,68 @@ public class BridgeGenerator : MonoBehaviour
             return;
         }
         
+        // 難易度設定から橋の長さを取得
+        int currentBridgeLength = config.bridgeLength;
+        
+        // 橋長と同じ長さのリストを作成（0: Normal, 1: Fragile）
+        List<int> platformTypes = new List<int>();
+        
+        // 初期化：すべてNormal（0）で埋める
+        for (int i = 0; i < currentBridgeLength; i++)
+        {
+            platformTypes.Add(0);
+        }
+        
+        // 難易度に応じたFragile足場の数を決定
+        int fragileCount = GetFragileCountForDifficulty();
+        
+        // 橋長がFragile足場数より少ない場合の安全チェック
+        if (fragileCount > currentBridgeLength)
+        {
+            Debug.LogWarning($"BridgeGenerator: Requested fragile count ({fragileCount}) exceeds bridge length ({currentBridgeLength}). Setting to bridge length.");
+            fragileCount = currentBridgeLength;
+        }
+        
+        // ランダムにFragile足場の位置を決定
+        List<int> availableIndices = new List<int>();
+        for (int i = 0; i < currentBridgeLength; i++)
+        {
+            availableIndices.Add(i);
+        }
+        
+        List<int> selectedFragilePositions = new List<int>();
+        
+        // 指定された数だけFragile足場を配置
+        for (int i = 0; i < fragileCount && availableIndices.Count > 0; i++)
+        {
+            int randomIndex = Random.Range(0, availableIndices.Count);
+            int selectedPosition = availableIndices[randomIndex];
+            platformTypes[selectedPosition] = 1; // Fragileに設定
+            selectedFragilePositions.Add(selectedPosition);
+            availableIndices.RemoveAt(randomIndex); // 重複防止のため削除
+        }
+        
+        // 実際に配置されたFragile足場の数を検証
+        int actualFragileCount = 0;
+        for (int i = 0; i < platformTypes.Count; i++)
+        {
+            if (platformTypes[i] == 1) actualFragileCount++;
+        }
+        
         // 足場を生成
-        for (int i = 0; i < config.bridgeLength; i++)
+        for (int i = 0; i < currentBridgeLength; i++)
         {
             Vector3 position = startPosition + new Vector3(0, 0, i * platformSpacing);
-            
-            // プラットフォームタイプをランダムに決定
-            Platform.PlatformType type = Random.Range(0f, 1f) < 0.7f ? 
-                Platform.PlatformType.Normal : Platform.PlatformType.Fragile;
-            
+            Platform.PlatformType type = (platformTypes[i] == 1) ? Platform.PlatformType.Fragile : Platform.PlatformType.Normal;
             Platform.RepairState state = Platform.RepairState.Broken;
             
             CreatePlatform(position, type, state);
+        }
+        
+        // 不一致がある場合は警告
+        if (actualFragileCount != fragileCount)
+        {
+            Debug.LogError($"BridgeGenerator: Fragile count mismatch! Expected: {fragileCount}, Actual: {actualFragileCount}");
         }
         
         // GameManagerの足場リストを更新
