@@ -163,30 +163,34 @@ public class PlayerController : MonoBehaviour
     {
         if (!_isInTimingChallenge) return;
 
-        // 現在修理中の足場の落下を停止し、同時にキャッチ処理を実行
+        // UIManagerからTimingCursorの現在位置を取得して判定を先に行う
+        GameManager.TimingResult result = EvaluateTimingByCursorPosition();
+        
+        Debug.Log($"Timing Result: {result}");
+
+        // 現在修理中の足場の落下を停止
         if (_targetPlatform != null)
         {
             // 足場の落下を停止
             _targetPlatform.StopFalling();
             
-            // 直接キャッチ処理を実行（カウント増加を含む）
-            bool catchSuccess = _targetPlatform.TryCatchFallingPlatform();
-            
-            if (catchSuccess)
+            // Miss判定以外の場合のみキャッチ処理を実行
+            if (result != GameManager.TimingResult.Miss)
             {
-                // キャッチ成功時は修理状態をリセット
-                ResetRepairState();
+                // 直接キャッチ処理を実行（カウント増加を含む）
+                bool catchSuccess = _targetPlatform.TryCatchFallingPlatform();
+                
+                if (catchSuccess)
+                {
+                    // キャッチ成功時は修理状態をリセット
+                    ResetRepairState();
+                }
             }
         }
         else
         {
             Debug.LogWarning("ProcessTimingInput: _targetPlatform is null!");
         }
-
-        // UIManagerからTimingCursorの現在位置を取得して判定
-        GameManager.TimingResult result = EvaluateTimingByCursorPosition();
-        
-        Debug.Log($"Timing Result: {result}");
         
         // Miss判定の場合のみ橋崩落を発生させる
         if (result == GameManager.TimingResult.Miss)
@@ -543,7 +547,14 @@ public class PlayerController : MonoBehaviour
             // Miss時の処理
             if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
             {
-                // チュートリアル時：単純にリセットするだけ
+                // チュートリアル中のfragile橋でmiss判定時は修繕を再開
+                if (_targetPlatform != null && _targetPlatform.type == Platform.PlatformType.Fragile)
+                {
+                    // GameManagerに修繕再開を要求
+                    GameManager.Instance.RestartTutorialFragileRepair();
+                    Debug.Log("Tutorial fragile bridge repair restarted due to miss");
+                }
+                
                 ResetRepairState();
             }
             else

@@ -163,7 +163,8 @@ public class UIManager : MonoBehaviour
         HideAllPanels();
         tutorialPanel?.SetActive(true);
         _selectedDifficulty = difficulty;
-        StartCoroutine(TutorialSequence());
+        // 古いTutorialSequenceメソッドは削除されたため、この呼び出しを削除
+        // 新しいチュートリアルシステムではGameManager.StartTutorial()が直接UIManager.ShowTutorialWithPlatforms()を呼び出す
     }
 
     public void ShowGameHUD()
@@ -435,6 +436,13 @@ public class UIManager : MonoBehaviour
         }
     }
     
+    // チュートリアルメッセージを更新するメソッド
+    public void UpdateTutorialMessage(string message)
+    {
+        var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
+        tutorialText?.SetText(message);
+    }
+    
     // チュートリアル完了後のゲーム開始
     public void StartGameAfterTutorial(GameManager.Difficulty difficulty)
     {
@@ -466,37 +474,6 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private IEnumerator TutorialSequence()
-    {
-        var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
-        var countdownText = FindTextInPanel(tutorialPanel, "CountdownText");
-        
-        tutorialText?.SetText("ハンマーを数回叩いて操作を確認してください");
-        countdownText?.SetText("");
-
-        // 簡単な操作確認（3秒間）
-        yield return new WaitForSeconds(3f);
-
-        // カウントダウン
-        tutorialText?.SetText("Are you ready?");
-        
-        for (int i = 3; i > 0; i--)
-        {
-            countdownText?.SetText(i.ToString());
-            yield return new WaitForSeconds(1f);
-        }
-
-        countdownText?.SetText("START!");
-        yield return new WaitForSeconds(0.5f);
-
-        // ゲーム開始
-        ShowGameHUD();
-        
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.StartGame(_selectedDifficulty);
-        }
-    }
 
     private IEnumerator DisplayTimingFeedback(string feedback, Color color)
     {

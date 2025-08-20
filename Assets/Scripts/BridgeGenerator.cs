@@ -17,7 +17,7 @@ public class BridgeGenerator : MonoBehaviour
     public float platformSpacing = 1f;
     
     [Header("Auto Generation")]
-    public bool generateOnStart = false; // GameManagerから制御するためfalseに変更
+    public bool generateOnStart; // GameManagerから制御するためfalseに変更
     #endregion
 
     #region Private Fields
@@ -130,7 +130,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // シーン内のすべてのPlatformコンポーネントを持つオブジェクトを削除（初期足場は除く）
-        Platform[] allPlatforms = FindObjectsOfType<Platform>();
+        Platform[] allPlatforms = FindObjectsByType<Platform>(FindObjectsSortMode.None);
         foreach (Platform platform in allPlatforms)
         {
             if (platform != null && platform.transform.position != Vector3.zero)
@@ -195,8 +195,6 @@ public class BridgeGenerator : MonoBehaviour
         
         // 生成リストに追加
         _generatedPlatforms.Add(platformObj);
-        
-        Debug.Log($"BridgeGenerator: Created {type} platform at {position} with original rotation");
     }
     
     /// <summary>
@@ -339,7 +337,7 @@ public class BridgeGenerator : MonoBehaviour
         
         // 初期足場が存在しない場合のみ生成
         bool hasInitialPlatform = false;
-        Platform[] allPlatforms = FindObjectsOfType<Platform>();
+        Platform[] allPlatforms = FindObjectsByType<Platform>(FindObjectsSortMode.None);
         foreach (Platform platform in allPlatforms)
         {
             if (platform.transform.position == Vector3.zero)
@@ -432,23 +430,13 @@ public class BridgeGenerator : MonoBehaviour
             availableIndices.Add(i);
         }
         
-        List<int> selectedFragilePositions = new List<int>();
-        
         // 指定された数だけFragile足場を配置
         for (int i = 0; i < fragileCount && availableIndices.Count > 0; i++)
         {
             int randomIndex = Random.Range(0, availableIndices.Count);
             int selectedPosition = availableIndices[randomIndex];
             platformTypes[selectedPosition] = 1; // Fragileに設定
-            selectedFragilePositions.Add(selectedPosition);
             availableIndices.RemoveAt(randomIndex); // 重複防止のため削除
-        }
-        
-        // 実際に配置されたFragile足場の数を検証
-        int actualFragileCount = 0;
-        for (int i = 0; i < platformTypes.Count; i++)
-        {
-            if (platformTypes[i] == 1) actualFragileCount++;
         }
         
         // 足場を生成
@@ -459,12 +447,6 @@ public class BridgeGenerator : MonoBehaviour
             Platform.RepairState state = Platform.RepairState.Broken;
             
             CreatePlatform(position, type, state);
-        }
-        
-        // 不一致がある場合は警告
-        if (actualFragileCount != fragileCount)
-        {
-            Debug.LogError($"BridgeGenerator: Fragile count mismatch! Expected: {fragileCount}, Actual: {actualFragileCount}");
         }
         
         // GameManagerの足場リストを更新
