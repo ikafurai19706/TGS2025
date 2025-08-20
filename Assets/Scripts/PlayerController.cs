@@ -537,7 +537,7 @@ public class PlayerController : MonoBehaviour
         if (result != GameManager.TimingResult.Miss)
         {
             // Miss以外の場合は修繕を完了
-            _targetPlatform.Repair();
+            if (_targetPlatform != null) _targetPlatform.Repair();
             
             // チュートリアル中の場合、ここではカウントを追加しない
             // 足場のキャッチ完了時に追加する

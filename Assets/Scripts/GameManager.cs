@@ -69,11 +69,15 @@ public class GameManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            
+            // ゲーム状態を明示的にTitleに初期化
+            _currentState = GameState.Title;
         }
         else
         {
             Destroy(gameObject);
         }
+        Debug.Log(_currentState);
     }
 
     private void Start()
@@ -163,6 +167,11 @@ public class GameManager : MonoBehaviour
     public GameState GetCurrentState()
     {
         return _currentState;
+    }
+    
+    public void SetCurrentState(GameState state)
+    {
+        _currentState = state;
     }
     
     // チュートリアルモードかどうかを判定するメソッドを追加

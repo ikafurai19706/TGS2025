@@ -312,8 +312,8 @@ public class UIManager : MonoBehaviour
         // 6. GameManagerの状態をリセット（利用可能なメソッドのみ使用）
         if (GameManager.Instance != null)
         {
-            // GameManagerの状態を適切にリセット
-            // 具体的なリセット処理はGameManagerで実装される予定
+            // ゲーム状態を明示的にTitleに初期化
+            GameManager.Instance.SetCurrentState(GameManager.GameState.Title);
             Debug.Log("GameManager reset requested");
         }
         
@@ -402,9 +402,14 @@ public class UIManager : MonoBehaviour
     /// </summary>
     private void OnApplicationFocus(bool hasFocus)
     {
+        // エディター内やDevelopment Buildでは、フォーカスが外れてもゲーム状態を維持
+        #if UNITY_EDITOR || DEVELOPMENT_BUILD
+        return;
+        #endif
+        
         if (!hasFocus)
         {
-            // フォーカスを失った場合のクリーンアップ
+            // リリースビルドでのみフォーカスを失った場合のクリーンアップを実行
             CompleteReset();
             ShowTitleScreen();
         }

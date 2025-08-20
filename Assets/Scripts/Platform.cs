@@ -627,10 +627,13 @@ public class Platform : MonoBehaviour
     #endregion
 
     #region Private Methods - Collapse Logic
+
     private IEnumerator CollapsePlatform()
     {
         // 崩落開始の遅延
         yield return new WaitForSeconds(collapseDelay);
+
+        var state = GameManager.Instance.GetCurrentState();
         
         // 崩落状態に設定
         repairState = RepairState.Collapsed;
@@ -673,6 +676,13 @@ public class Platform : MonoBehaviour
     
     private void EnablePhysicsFall()
     {
+        switch (GameManager.Instance.GetCurrentState())
+        {
+            case GameManager.GameState.Title:
+            case GameManager.GameState.Tutorial:
+                // 処理
+                return;
+        }
         // 既存のRigidbodyを取得
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
@@ -718,7 +728,11 @@ public class Platform : MonoBehaviour
     #region Private Methods - Utilities
     private void SetPlatformVisible(bool visible)
     {
-        if (_renderer != null) _renderer.enabled = visible;
+        // 子オブジェクトが1つしかない場合の最適化
+        if (transform.childCount > 0)
+        {
+            transform.GetChild(0).gameObject.SetActive(visible);
+        }
     }
     #endregion
 
