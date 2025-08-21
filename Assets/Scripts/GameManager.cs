@@ -49,7 +49,6 @@ public class GameManager : MonoBehaviour
     // Score System
     private float _gameStartTime;
     private int _totalRepairs;
-    private int _successfulRepairs;
     private float _totalAccuracy; // 正確度の累計を追加
     private float _totalTimingBonus;
     private int _currentCombo;
@@ -70,11 +69,15 @@ public class GameManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            
+            // ゲーム状態を明示的にTitleに初期化
+            _currentState = GameState.Title;
         }
         else
         {
             Destroy(gameObject);
         }
+        Debug.Log(_currentState);
     }
 
     private void Start()
@@ -166,6 +169,11 @@ public class GameManager : MonoBehaviour
         return _currentState;
     }
     
+    public void SetCurrentState(GameState state)
+    {
+        _currentState = state;
+    }
+    
     // チュートリアルモードかどうかを判定するメソッドを追加
     public bool IsTutorialMode()
     {
@@ -187,14 +195,12 @@ public class GameManager : MonoBehaviour
                 bonus = 0.02f;
                 feedbackText = "PERFECT!";
                 feedbackColor = Color.green;
-                _successfulRepairs++;
                 _currentCombo++;
                 break;
             case TimingResult.Good:
                 bonus = 0.01f;
                 feedbackText = "GOOD";
                 feedbackColor = Color.yellow;
-                _successfulRepairs++;
                 _currentCombo++;
                 break;
             case TimingResult.Bad:
@@ -209,8 +215,21 @@ public class GameManager : MonoBehaviour
                 feedbackText = "MISS";
                 feedbackColor = Color.purple;
                 _currentCombo = 0;
-                // Miss時は橋崩落を開始
-                TriggerBridgeCollapse();
+                
+                // チュートリアル中（Tutorial または TutorialCountdown）のMissは橋崩落を引き起こさない
+                if (_currentState != GameState.Tutorial && _currentState != GameState.TutorialCountdown)
+                {
+                    TriggerBridgeCollapse();
+                }
+                else
+                {
+                    // チュートリアル中のMissは警告のみ表示
+                    if (UIManager.Instance != null)
+                    {
+                        UIManager.Instance.ShowTimingFeedback("MISS - 練習を続けてください", feedbackColor);
+                    }
+                    return; // 以降の処理をスキップ
+                }
                 break;
         }
         
@@ -274,6 +293,27 @@ public class GameManager : MonoBehaviour
         if (UIManager.Instance != null)
         {
             UIManager.Instance.ShowTutorialWithPlatforms();
+        }
+    }
+    
+    // チュートリアル中のfragile橋でmiss判定時に修繕を再開するメソッド
+    public void RestartTutorialFragileRepair()
+    {
+        if (_currentState != GameState.Tutorial) return;
+        
+        // Z=4のfragile橋を探す
+        Platform fragilePlatform = FindPlatformAtExactPosition(new Vector3(0, 0, 4));
+        if (fragilePlatform != null && fragilePlatform.type == Platform.PlatformType.Fragile)
+        {
+            // fragile橋の状態をリセット
+            fragilePlatform.ResetToRepairable();
+            
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.UpdateTutorialMessage("MISS！もう一度修繕してください。");
+            }
+            
+            Debug.Log("Tutorial fragile bridge repair restarted after miss");
         }
     }
     
@@ -342,7 +382,6 @@ public class GameManager : MonoBehaviour
     private void InitializeGameStats()
     {
         _totalRepairs = 0;
-        _successfulRepairs = 0;
         _totalAccuracy = 0f; // 正確度の初期化
         _totalTimingBonus = 0f; // 初期値を0に修正
         _currentCombo = 0;

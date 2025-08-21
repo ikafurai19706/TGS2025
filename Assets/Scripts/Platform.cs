@@ -209,10 +209,17 @@ public class Platform : MonoBehaviour
         if (_isFalling && _fallingPlatform)
         {
             _canCatch = false;
-            // 足場キャッチに失敗したため橋全体の崩落を開始
-            if (GameManager.Instance != null)
+            
+            // チュートリアル中は橋崩落を発生させない
+            if (GameManager.Instance != null && !GameManager.Instance.IsTutorialMode())
             {
+                // 通常ゲーム中のみ橋全体の崩落を開始
                 GameManager.Instance.TriggerBridgeCollapse();
+            }
+            else if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
+            {
+                // チュートリアル中はログのみ出力
+                Debug.Log("Tutorial mode: Bridge collapse prevented on missed catch");
             }
         }
     }
@@ -230,6 +237,47 @@ public class Platform : MonoBehaviour
     public bool IsCollapsed()
     {
         return repairState == RepairState.Collapsed;
+    }
+    
+    // チュートリアル中のfragile橋をmiss後に修繕可能状態にリセットするメソッド
+    public void ResetToRepairable()
+    {
+        if (type != PlatformType.Fragile) return;
+        
+        // 落下中の足場がある場合は削除
+        if (_fallingPlatform != null)
+        {
+            Destroy(_fallingPlatform);
+            _fallingPlatform = null;
+        }
+        
+        // 落下状態をリセット
+        if (_fallCoroutine != null)
+        {
+            StopCoroutine(_fallCoroutine);
+            _fallCoroutine = null;
+        }
+        
+        _isFalling = false;
+        _canCatch = false;
+        _fallAnimationStopped = false;
+        
+        // 修繕状態を最初に戻す
+        repairState = RepairState.Broken;
+        isRepaired = false;
+        
+        // 元の足場を表示状態に戻す
+        SetPlatformVisible(true);
+        
+        // 元のマテリアルに戻す（修繕前の状態）
+        if (_renderer != null)
+        {
+            // 初期マテリアルがあれば戻す、なければデフォルトマテリアルを使用
+            // ここではrepairedMaterialではない状態に戻したいので、
+            // 元のマテリアルを保存していない場合は現在のマテリアルをそのまま使用
+        }
+        
+        Debug.Log($"Fragile platform {name} reset to repairable state");
     }
     #endregion
 
@@ -437,10 +485,16 @@ public class Platform : MonoBehaviour
         _isFalling = false;
         _fallCoroutine = null;
         
-        // 足場が叩ける範囲を通り過ぎたため、即座に崩落を開始
-        if (GameManager.Instance != null)
+        // チュートリアル中は橋崩落を発生させない
+        if (GameManager.Instance != null && !GameManager.Instance.IsTutorialMode())
         {
+            // 通常ゲーム中のみ橋全体の崩落を開始
             GameManager.Instance.TriggerBridgeCollapse();
+        }
+        else if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
+        {
+            // チュートリアル中はログのみ出力
+            Debug.Log("Tutorial mode: Bridge collapse prevented on fall timeout");
         }
         
         // 落下中の足場をクリーンアップ
@@ -573,10 +627,13 @@ public class Platform : MonoBehaviour
     #endregion
 
     #region Private Methods - Collapse Logic
+
     private IEnumerator CollapsePlatform()
     {
         // 崩落開始の遅延
         yield return new WaitForSeconds(collapseDelay);
+
+        var state = GameManager.Instance.GetCurrentState();
         
         // 崩落状態に設定
         repairState = RepairState.Collapsed;
@@ -619,6 +676,13 @@ public class Platform : MonoBehaviour
     
     private void EnablePhysicsFall()
     {
+        switch (GameManager.Instance.GetCurrentState())
+        {
+            case GameManager.GameState.Title:
+            case GameManager.GameState.Tutorial:
+                // 処理
+                return;
+        }
         // 既存のRigidbodyを取得
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
@@ -664,7 +728,11 @@ public class Platform : MonoBehaviour
     #region Private Methods - Utilities
     private void SetPlatformVisible(bool visible)
     {
-        if (_renderer != null) _renderer.enabled = visible;
+        // 子オブジェクトが1つしかない場合の最適化
+        if (transform.childCount > 0)
+        {
+            transform.GetChild(0).gameObject.SetActive(visible);
+        }
     }
     #endregion
 

@@ -163,7 +163,8 @@ public class UIManager : MonoBehaviour
         HideAllPanels();
         tutorialPanel?.SetActive(true);
         _selectedDifficulty = difficulty;
-        StartCoroutine(TutorialSequence());
+        // 古いTutorialSequenceメソッドは削除されたため、この呼び出しを削除
+        // 新しいチュートリアルシステムではGameManager.StartTutorial()が直接UIManager.ShowTutorialWithPlatforms()を呼び出す
     }
 
     public void ShowGameHUD()
@@ -311,8 +312,8 @@ public class UIManager : MonoBehaviour
         // 6. GameManagerの状態をリセット（利用可能なメソッドのみ使用）
         if (GameManager.Instance != null)
         {
-            // GameManagerの状態を適切にリセット
-            // 具体的なリセット処理はGameManagerで実装される予定
+            // ゲーム状態を明示的にTitleに初期化
+            GameManager.Instance.SetCurrentState(GameManager.GameState.Title);
             Debug.Log("GameManager reset requested");
         }
         
@@ -401,9 +402,14 @@ public class UIManager : MonoBehaviour
     /// </summary>
     private void OnApplicationFocus(bool hasFocus)
     {
+        // エディター内やDevelopment Buildでは、フォーカスが外れてもゲーム状態を維持
+        #if UNITY_EDITOR || DEVELOPMENT_BUILD
+        return;
+        #endif
+        
         if (!hasFocus)
         {
-            // フォーカスを失った場合のクリーンアップ
+            // リリースビルドでのみフォーカスを失った場合のクリーンアップを実行
             CompleteReset();
             ShowTitleScreen();
         }
@@ -433,6 +439,13 @@ public class UIManager : MonoBehaviour
             var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
             tutorialText?.SetText("チュートリアル完了！\n3秒後にゲームが開始されます");
         }
+    }
+    
+    // チュートリアルメッセージを更新するメソッド
+    public void UpdateTutorialMessage(string message)
+    {
+        var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
+        tutorialText?.SetText(message);
     }
     
     // チュートリアル完了後のゲーム開始
@@ -466,37 +479,6 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private IEnumerator TutorialSequence()
-    {
-        var tutorialText = FindTextInPanel(tutorialPanel, "TutorialText");
-        var countdownText = FindTextInPanel(tutorialPanel, "CountdownText");
-        
-        tutorialText?.SetText("ハンマーを数回叩いて操作を確認してください");
-        countdownText?.SetText("");
-
-        // 簡単な操作確認（3秒間）
-        yield return new WaitForSeconds(3f);
-
-        // カウントダウン
-        tutorialText?.SetText("Are you ready?");
-        
-        for (int i = 3; i > 0; i--)
-        {
-            countdownText?.SetText(i.ToString());
-            yield return new WaitForSeconds(1f);
-        }
-
-        countdownText?.SetText("START!");
-        yield return new WaitForSeconds(0.5f);
-
-        // ゲーム開始
-        ShowGameHUD();
-        
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.StartGame(_selectedDifficulty);
-        }
-    }
 
     private IEnumerator DisplayTimingFeedback(string feedback, Color color)
     {
