@@ -28,8 +28,8 @@ public class GameManager : MonoBehaviour
     }
     
     [Header("Difficulty Settings")]
-    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, minRepairHits = 3, maxRepairHits = 5, timeLimit = 60f, timingWindow = 0.8f };
-    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, minRepairHits = 4, maxRepairHits = 7, timeLimit = 60f, timingWindow = 0.5f };
+    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, minRepairHits = 3, maxRepairHits = 5, timeLimit = 30f, timingWindow = 0.8f };
+    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, minRepairHits = 4, maxRepairHits = 7, timeLimit = 45f, timingWindow = 0.5f };
     public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, minRepairHits = 5, maxRepairHits = 9, timeLimit = 60f, timingWindow = 0.3f };
     #endregion
 
