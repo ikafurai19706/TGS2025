@@ -13,12 +13,7 @@ public class Platform : MonoBehaviour
     public PlatformType type = PlatformType.Normal;
     public bool isRepaired;
     public RepairState repairState = RepairState.Broken;
-    
-    [Header("Materials")]
-    public Material repairedMaterial;
-    public Material stepMaterial1;
-    public Material stepMaterial2;
-    
+
     [Header("Fall Settings")]
     public GameObject newPlatformPrefab;
     public float fallSpeed = 1f;
@@ -132,21 +127,6 @@ public class Platform : MonoBehaviour
         return CatchPlatformAtPosition(stoppedPosition);
     }
 
-    public void ChangeMaterialStep(int step)
-    {
-        if (_renderer == null) return;
-        
-        switch (step)
-        {
-            case 3 when stepMaterial1 != null:
-                _renderer.material = stepMaterial1;
-                break;
-            case 6 when stepMaterial2 != null:
-                _renderer.material = stepMaterial2;
-                break;
-        }
-    }
-
     // 足場の落下を停止するメソッドを追加
     public void StopFalling()
     {
@@ -159,7 +139,7 @@ public class Platform : MonoBehaviour
             _fallCoroutine = null;
             
             // 現在の位置で足場を固定
-            if (_fallingPlatform != null)
+            if (_fallingPlatform)
             {
                 Vector3 currentPosition = _fallingPlatform.transform.position;
             }
@@ -188,7 +168,7 @@ public class Platform : MonoBehaviour
         SetPlatformVisible(false);
         
         // 落下する足場を生成
-        if (newPlatformPrefab != null)
+        if (newPlatformPrefab)
         {
             _originalPosition = transform.position;
             // 落下開始位置を上に設定（fallHeightの高さから開始）
@@ -313,11 +293,6 @@ public class Platform : MonoBehaviour
             // 通常足場の場合は即座に修理完了
             repairState = RepairState.Completed;
             isRepaired = true;
-            
-            if (repairedMaterial != null && _renderer != null)
-            {
-                _renderer.material = repairedMaterial;
-            }
         }
         else if (type == PlatformType.Fragile)
         {
@@ -372,11 +347,6 @@ public class Platform : MonoBehaviour
         repairState = RepairState.Completed;
         isRepaired = true;
         SetPlatformVisible(true);
-        
-        if (repairedMaterial != null && _renderer != null)
-        {
-            _renderer.material = repairedMaterial;
-        }
     }
 
     private void CleanupFallingPlatform()
@@ -634,6 +604,12 @@ public class Platform : MonoBehaviour
         yield return new WaitForSeconds(collapseDelay);
 
         var state = GameManager.Instance.GetCurrentState();
+        switch (state)
+        {
+            case GameManager.GameState.Title:
+            case GameManager.GameState.Tutorial:
+                yield break;
+        }
         
         // 崩落状態に設定
         repairState = RepairState.Collapsed;
@@ -676,13 +652,6 @@ public class Platform : MonoBehaviour
     
     private void EnablePhysicsFall()
     {
-        switch (GameManager.Instance.GetCurrentState())
-        {
-            case GameManager.GameState.Title:
-            case GameManager.GameState.Tutorial:
-                // 処理
-                return;
-        }
         // 既存のRigidbodyを取得
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)

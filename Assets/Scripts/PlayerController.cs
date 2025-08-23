@@ -46,7 +46,7 @@ public class PlayerController : MonoBehaviour
     #endregion
 
     #region Constants
-    private const int REPAIR_NEEDED = 9;
+    // private const int REPAIR_NEEDED = 9; // 削除：難易度設定から動的に取得するように変更
     private const float HAMMER_SWING_DURATION = 0.04f;
     private const float MOVEMENT_DISTANCE = 1.0f;
     private const float MOVEMENT_DURATION = 0.16f;
@@ -343,8 +343,8 @@ public class PlayerController : MonoBehaviour
                 return;
             }
             
-            // 9回の修繕が完了している場合は落下中の足場をキャッチ
-            if (_repairCount >= REPAIR_NEEDED)
+            // 必要修繕回数に達した場合は落下中の足場をキャッチ
+            if (_repairCount >= GetRequiredRepairHits())
             {
                 TryCatchFallingPlatform();
                 return;
@@ -466,27 +466,31 @@ public class PlayerController : MonoBehaviour
     #endregion
 
     #region Repair Logic
+    // 難易度設定から必要修繕回数を取得するメソッドを追加
+    private int GetRequiredRepairHits()
+    {
+        if (GameManager.Instance != null)
+        {
+            var config = GameManager.Instance.GetCurrentDifficultyConfig();
+            return config.repairHits;
+        }
+        
+        // GameManagerがない場合はデフォルト値を返す
+        return 9;
+    }
+    
     private void ProcessRepairHit()
     {
         _repairCount++;
         
-        UpdateMaterialProgress();
         PerformHammerSwing();
         
         // 初回叩き時から残り回数を表示
         UpdateCountLeftDisplay();
         
-        if (_repairCount == REPAIR_NEEDED)
+        if (_repairCount == GetRequiredRepairHits())
         {
             CompleteRepair();
-        }
-    }
-
-    private void UpdateMaterialProgress()
-    {
-        if ((_repairCount == 3 || _repairCount == 6) && _targetPlatform != null)
-        {
-            _targetPlatform.ChangeMaterialStep(_repairCount);
         }
     }
 
@@ -605,7 +609,7 @@ public class PlayerController : MonoBehaviour
     {
         _targetPlatform = platform;
         _isRepairing = true;
-        _repairCount = REPAIR_NEEDED;
+        _repairCount = GetRequiredRepairHits();
         
         // キャッチ状態では残り回数を0に
         UpdateCountLeftDisplay();
@@ -615,7 +619,7 @@ public class PlayerController : MonoBehaviour
     {
         if (UIManager.Instance != null)
         {
-            int countLeft = Mathf.Max(0, REPAIR_NEEDED - _repairCount);
+            int countLeft = Mathf.Max(0, GetRequiredRepairHits() - _repairCount);
             UIManager.Instance.UpdateCountLeft(countLeft);
         }
     }
