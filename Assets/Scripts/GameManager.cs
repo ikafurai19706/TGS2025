@@ -21,16 +21,15 @@ public class GameManager : MonoBehaviour
     public class DifficultyConfig
     {
         public int bridgeLength = 15;
-        public int minRepairHits = 3;
-        public int maxRepairHits = 7;
+        public int repairHits = 5;
         public float timeLimit = 60f;
         public float timingWindow = 0.5f; // Perfect判定の時間窓
     }
     
     [Header("Difficulty Settings")]
-    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, minRepairHits = 3, maxRepairHits = 5, timeLimit = 60f, timingWindow = 0.8f };
-    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, minRepairHits = 4, maxRepairHits = 7, timeLimit = 60f, timingWindow = 0.5f };
-    public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, minRepairHits = 5, maxRepairHits = 9, timeLimit = 60f, timingWindow = 0.3f };
+    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, repairHits = 5, timeLimit = 30f, timingWindow = 0.8f };
+    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, repairHits = 7, timeLimit = 45f, timingWindow = 0.5f };
+    public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, repairHits = 9, timeLimit = 60f, timingWindow = 0.3f };
     #endregion
 
     #region Private Fields
@@ -224,7 +223,7 @@ public class GameManager : MonoBehaviour
                 else
                 {
                     // チュートリアル中のMissは警告のみ表示
-                    if (UIManager.Instance != null)
+                    if (UIManager.Instance)
                     {
                         UIManager.Instance.ShowTimingFeedback("MISS - 練習を続けてください", feedbackColor);
                     }
@@ -237,7 +236,7 @@ public class GameManager : MonoBehaviour
         _maxCombo = Mathf.Max(_maxCombo, _currentCombo);
         
         // UI更新
-        if (UIManager.Instance != null)
+        if (UIManager.Instance)
         {
             UIManager.Instance.ShowTimingFeedback(feedbackText, feedbackColor);
             UIManager.Instance.UpdateCombo(_currentCombo);
@@ -275,11 +274,12 @@ public class GameManager : MonoBehaviour
     {
         _selectedDifficulty = difficulty;
         _currentDifficulty = difficulty; // この行を追加
+        _currentConfig = GetDifficultyConfig(difficulty); // この行を追加して難易度設定を即座に反映
         _currentState = GameState.Tutorial;
         _tutorialPlatformsCompleted = 0;
         
         // チュートリアル用足場を自動生成
-        if (_bridgeGenerator != null)
+        if (_bridgeGenerator)
         {
             _bridgeGenerator.GenerateTutorialPlatforms();
         }
@@ -290,7 +290,7 @@ public class GameManager : MonoBehaviour
         
         SetupTutorialPlatforms();
         
-        if (UIManager.Instance != null)
+        if (UIManager.Instance)
         {
             UIManager.Instance.ShowTutorialWithPlatforms();
         }
@@ -303,12 +303,12 @@ public class GameManager : MonoBehaviour
         
         // Z=4のfragile橋を探す
         Platform fragilePlatform = FindPlatformAtExactPosition(new Vector3(0, 0, 4));
-        if (fragilePlatform != null && fragilePlatform.type == Platform.PlatformType.Fragile)
+        if (fragilePlatform && fragilePlatform.type == Platform.PlatformType.Fragile)
         {
             // fragile橋の状態をリセット
             fragilePlatform.ResetToRepairable();
             
-            if (UIManager.Instance != null)
+            if (UIManager.Instance)
             {
                 UIManager.Instance.UpdateTutorialMessage("MISS！もう一度修繕してください。");
             }
@@ -321,7 +321,7 @@ public class GameManager : MonoBehaviour
     {
         _tutorialPlatformsCompleted++;
         
-        if (UIManager.Instance != null)
+        if (UIManager.Instance)
         {
             UIManager.Instance.UpdateTutorialProgress(_tutorialPlatformsCompleted, TutorialPlatformCount);
         }
@@ -338,7 +338,7 @@ public class GameManager : MonoBehaviour
     {
         // プレイヤーの移動を停止し、Rotation Constraintを解除
         var player = FindFirstObjectByType<PlayerController>();
-        if (player != null)
+        if (player)
         {
             player.SetCanMove(false);
             player.OnBridgeCollapse(); // 橋崩落時にRotation Constraintを解除
@@ -347,7 +347,7 @@ public class GameManager : MonoBehaviour
         // すべての足場を順次崩落
         foreach (Platform platform in _allPlatforms)
         {
-            if (platform != null && !platform.IsCollapsed())
+            if (platform && !platform.IsCollapsed())
             {
                 platform.TriggerCollapse();
                 yield return new WaitForSeconds(chainCollapseInterval);
@@ -361,7 +361,7 @@ public class GameManager : MonoBehaviour
 
     private void ShowGameOver()
     {
-        if (gameOverUI != null)
+        if (gameOverUI)
         {
             gameOverUI.SetActive(true);
         }
@@ -391,7 +391,7 @@ public class GameManager : MonoBehaviour
     
     private void SetupBridgeForDifficulty()
     {
-        if (_bridgeGenerator != null)
+        if (_bridgeGenerator)
         {
             _bridgeGenerator.GenerateBridgeWithDifficulty(_currentConfig);
         }
@@ -403,7 +403,7 @@ public class GameManager : MonoBehaviour
         {
             float elapsedTime = Time.time - _gameStartTime;
             
-            if (UIManager.Instance != null)
+            if (UIManager.Instance)
             {
                 UIManager.Instance.UpdateTime(elapsedTime);
             }
@@ -431,13 +431,13 @@ public class GameManager : MonoBehaviour
         string rank = CalculateRank(finalScore, success);
         
         // ランキングに記録
-        if (RankingManager.Instance != null)
+        if (RankingManager.Instance)
         {
             RankingManager.Instance.AddScore(_currentDifficulty, finalScore);
         }
         
         // リザルト画面表示
-        if (UIManager.Instance != null)
+        if (UIManager.Instance)
         {
             UIManager.Instance.ShowResult(gameTime, repairRate, timingBonus, finalScore, rank);
         }
@@ -481,7 +481,7 @@ public class GameManager : MonoBehaviour
             Vector3 platformPosition = new Vector3(0, 0, z);
             Platform platform = FindPlatformAtExactPosition(platformPosition);
             
-            if (platform != null)
+            if (platform)
             {
                 _tutorialPlatforms.Add(platform);
             }
@@ -519,7 +519,7 @@ public class GameManager : MonoBehaviour
         // カウントダウン中の状態に変更
         _currentState = GameState.TutorialCountdown;
         
-        if (UIManager.Instance != null)
+        if (UIManager.Instance)
         {
             UIManager.Instance.StartGameAfterTutorial(_selectedDifficulty);
         }

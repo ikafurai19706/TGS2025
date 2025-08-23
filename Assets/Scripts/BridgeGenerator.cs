@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class BridgeGenerator : MonoBehaviour
@@ -46,7 +47,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // GameManagerから難易度設定を取得して橋を生成
-        if (GameManager.Instance != null)
+        if (GameManager.Instance)
         {
             GameManager.DifficultyConfig config = GameManager.Instance.GetCurrentDifficultyConfig();
             GenerateBridgeWithDifficulty(config);
@@ -84,7 +85,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // GameManagerの足場リストを更新
-        if (GameManager.Instance != null)
+        if (GameManager.Instance)
         {
             GameManager.Instance.RefreshPlatformList();
         }
@@ -101,7 +102,7 @@ public class BridgeGenerator : MonoBehaviour
     {
         foreach (GameObject platform in _generatedPlatforms)
         {
-            if (platform != null)
+            if (platform)
             {
                 DestroyImmediate(platform);
             }
@@ -118,7 +119,7 @@ public class BridgeGenerator : MonoBehaviour
         for (int i = _generatedPlatforms.Count - 1; i >= 0; i--)
         {
             GameObject platform = _generatedPlatforms[i];
-            if (platform != null)
+            if (platform)
             {
                 // 初期足場（位置が(0,0,0)）は削除しない
                 if (platform.transform.position != Vector3.zero)
@@ -133,7 +134,7 @@ public class BridgeGenerator : MonoBehaviour
         Platform[] allPlatforms = FindObjectsByType<Platform>(FindObjectsSortMode.None);
         foreach (Platform platform in allPlatforms)
         {
-            if (platform != null && platform.transform.position != Vector3.zero)
+            if (platform && platform.transform.position != Vector3.zero)
             {
                 // 生成リストにない足場も削除対象にする
                 if (!_generatedPlatforms.Contains(platform.gameObject))
@@ -144,7 +145,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // floorParent配下の子オブジェクトを削除（初期足場は除く）
-        if (floorParent != null)
+        if (floorParent)
         {
             for (int i = floorParent.childCount - 1; i >= 0; i--)
             {
@@ -165,7 +166,7 @@ public class BridgeGenerator : MonoBehaviour
     /// </summary>
     private bool ValidatePrefabs()
     {
-        return normalPlatformPrefab != null && fragilePlatformPrefab != null;
+        return normalPlatformPrefab && fragilePlatformPrefab;
     }
     
     /// <summary>
@@ -179,14 +180,14 @@ public class BridgeGenerator : MonoBehaviour
         GameObject platformObj = Instantiate(prefab, position, prefab.transform.rotation);
         
         // 親オブジェクトを設定
-        if (floorParent != null)
+        if (floorParent)
         {
             platformObj.transform.SetParent(floorParent);
         }
         
         // Platform コンポーネントの設定
         Platform platform = platformObj.GetComponent<Platform>();
-        if (platform != null)
+        if (platform)
         {
             platform.type = type;
             platform.repairState = state;
@@ -241,12 +242,8 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // 実際に配置されたFragile足場の数を検証
-        int actualFragileCount = 0;
-        for (int i = 0; i < platformTypes.Count; i++)
-        {
-            if (platformTypes[i] == 1) actualFragileCount++;
-        }
-        
+        int actualFragileCount = platformTypes.Count(t => t == 1);
+
         // 足場を生成
         Debug.Log($"BridgeGenerator: Starting platform generation for {bridgeLength} platforms");
         for (int i = 0; i < bridgeLength; i++)
@@ -272,7 +269,7 @@ public class BridgeGenerator : MonoBehaviour
         // 最後の足場の情報を確認
         if (_generatedPlatforms.Count > 0)
         {
-            GameObject lastPlatform = _generatedPlatforms[_generatedPlatforms.Count - 1];
+            GameObject lastPlatform = _generatedPlatforms[^1];
             Debug.Log($"  - Last Platform Position: {lastPlatform.transform.position}");
             Debug.Log($"  - Expected Last Position: {startPosition + new Vector3(0, 0, (bridgeLength - 1) * platformSpacing)}");
         }
@@ -284,7 +281,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // GameManagerの足場リストを更新
-        if (GameManager.Instance != null)
+        if (GameManager.Instance)
         {
             GameManager.Instance.RefreshPlatformList();
         }
@@ -295,7 +292,7 @@ public class BridgeGenerator : MonoBehaviour
     /// </summary>
     private int GetFragileCountForDifficulty()
     {
-        if (GameManager.Instance != null)
+        if (GameManager.Instance)
         {
             GameManager.Difficulty currentDifficulty = GameManager.Instance.GetCurrentDifficulty();
             switch (currentDifficulty)
@@ -353,7 +350,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // GameManagerの足場リストを更新
-        if (GameManager.Instance != null)
+        if (GameManager.Instance)
         {
             GameManager.Instance.RefreshPlatformList();
         }
@@ -385,7 +382,7 @@ public class BridgeGenerator : MonoBehaviour
         for (int i = _generatedPlatforms.Count - 1; i >= 0; i--)
         {
             GameObject platform = _generatedPlatforms[i];
-            if (platform != null && platform.name.StartsWith("Tutorial_"))
+            if (platform && platform.name.StartsWith("Tutorial_"))
             {
                 DestroyImmediate(platform);
                 _generatedPlatforms.RemoveAt(i);
@@ -450,7 +447,7 @@ public class BridgeGenerator : MonoBehaviour
         }
         
         // GameManagerの足場リストを更新
-        if (GameManager.Instance != null)
+        if (GameManager.Instance)
         {
             GameManager.Instance.RefreshPlatformList();
         }

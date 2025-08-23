@@ -2206,19 +2206,19 @@ MonoBehaviour:
     bridgeLength: 10
     minRepairHits: 3
     maxRepairHits: 5
-    timeLimit: 90
+    timeLimit: 30
     timingWindow: 0.8
   normalConfig:
     bridgeLength: 15
     minRepairHits: 4
     maxRepairHits: 7
-    timeLimit: 60
+    timeLimit: 45
     timingWindow: 0.5
   hardConfig:
     bridgeLength: 20
     minRepairHits: 5
     maxRepairHits: 9
-    timeLimit: 45
+    timeLimit: 60
     timingWindow: 0.3
 --- !u!114 &643547812
 MonoBehaviour:
@@ -3249,7 +3249,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 0
-  orthographic size: 5
+  orthographic size: 7.5
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
