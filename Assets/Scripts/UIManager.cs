@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.InputSystem;
 
 public class UIManager : MonoBehaviour
 {
@@ -36,6 +37,13 @@ public class UIManager : MonoBehaviour
     private RectTransform _perfectZone;
     private RectTransform _goodZone;
     private RectTransform _badZone;
+    
+    // Ranking UI State
+    private GameManager.Difficulty _currentRankingTab = GameManager.Difficulty.Easy;
+    
+    // Password Dialog State
+    private bool _isPasswordDialogActive = false;
+    private string _currentPasswordInput = "";
     #endregion
 
     #region Unity Lifecycle
@@ -75,23 +83,25 @@ public class UIManager : MonoBehaviour
     {
         if (titlePanel != null)
         {
-            // ButtonsPanelの子としてボタンを検索
-            Transform buttonsPanel = titlePanel.transform.Find("ButtonsPanel");
-            if (buttonsPanel != null)
+            // RankingButtonはTitlePanel直下にある
+            var rankingButton = titlePanel.transform.Find("RankingButton")?.GetComponent<Button>();
+            rankingButton?.onClick.AddListener(ShowRanking);
+            
+            // DifficultyPanelの子として難易度ボタンを検索
+            Transform difficultyPanel = titlePanel.transform.Find("DifficultyPanel");
+            if (difficultyPanel != null)
             {
-                var easyButton = buttonsPanel.Find("EasyButton")?.GetComponent<Button>();
-                var normalButton = buttonsPanel.Find("NormalButton")?.GetComponent<Button>();
-                var hardButton = buttonsPanel.Find("HardButton")?.GetComponent<Button>();
-                var rankingButton = buttonsPanel.Find("RankingButton")?.GetComponent<Button>();
+                var easyButton = difficultyPanel.Find("EasyButton")?.GetComponent<Button>();
+                var normalButton = difficultyPanel.Find("NormalButton")?.GetComponent<Button>();
+                var hardButton = difficultyPanel.Find("HardButton")?.GetComponent<Button>();
                 
                 easyButton?.onClick.AddListener(() => StartGame(GameManager.Difficulty.Easy));
                 normalButton?.onClick.AddListener(() => StartGame(GameManager.Difficulty.Normal));
                 hardButton?.onClick.AddListener(() => StartGame(GameManager.Difficulty.Hard));
-                rankingButton?.onClick.AddListener(ShowRanking);
             }
             else
             {
-                Debug.LogError("UIManager: ButtonsPanel not found in titlePanel!");
+                Debug.LogError("UIManager: DifficultyPanel not found in titlePanel!");
             }
         }
         else
@@ -113,7 +123,28 @@ public class UIManager : MonoBehaviour
     {
         if (rankingPanel != null)
         {
-            FindButtonInPanel(rankingPanel, "BackToTitleButton")?.onClick.AddListener(ShowTitleScreen);
+            // BackButtonを設定 - パスワードダイアログも非アクティブにする
+            FindButtonInPanel(rankingPanel, "BackButton")?.onClick.AddListener(OnBackButtonPressed);
+            
+            // ResetButtonを設定（RankingPanel直下）
+            FindButtonInPanel(rankingPanel, "ResetButton")?.onClick.AddListener(ShowPasswordDialog);
+            
+            // タブボタンを設定
+            Transform tabsPanel = rankingPanel.transform.Find("TabsPanel");
+            if (tabsPanel != null)
+            {
+                var easyTabButton = tabsPanel.Find("EasyTabButton")?.GetComponent<Button>();
+                var normalTabButton = tabsPanel.Find("NormalTabButton")?.GetComponent<Button>();
+                var hardTabButton = tabsPanel.Find("HardTabButton")?.GetComponent<Button>();
+                
+                easyTabButton?.onClick.AddListener(() => SwitchRankingTab(GameManager.Difficulty.Easy));
+                normalTabButton?.onClick.AddListener(() => SwitchRankingTab(GameManager.Difficulty.Normal));
+                hardTabButton?.onClick.AddListener(() => SwitchRankingTab(GameManager.Difficulty.Hard));
+            }
+            else
+            {
+                Debug.LogError("UIManager: TabsPanel not found in rankingPanel!");
+            }
         }
     }
 
@@ -190,6 +221,44 @@ public class UIManager : MonoBehaviour
     {
         HideAllPanels();
         rankingPanel?.SetActive(true);
+        
+        // デフォルトでEasyタブを選択
+        _currentRankingTab = GameManager.Difficulty.Easy;
+        SwitchRankingTab(_currentRankingTab);
+    }
+    
+    // ランキングタブ切り替えメソッドを追加
+    public void SwitchRankingTab(GameManager.Difficulty difficulty)
+    {
+        _currentRankingTab = difficulty;
+        
+        // すべての難易度パネルを非表示
+        var easyPanel = FindObjectInPanel(rankingPanel, "EasyPanel");
+        var normalPanel = FindObjectInPanel(rankingPanel, "NormalPanel");
+        var hardPanel = FindObjectInPanel(rankingPanel, "HardPanel");
+        
+        easyPanel?.SetActive(false);
+        normalPanel?.SetActive(false);
+        hardPanel?.SetActive(false);
+        
+        // 選択された難易度のパネルのみ表示
+        GameObject targetPanel = null;
+        switch (difficulty)
+        {
+            case GameManager.Difficulty.Easy:
+                targetPanel = easyPanel;
+                break;
+            case GameManager.Difficulty.Normal:
+                targetPanel = normalPanel;
+                break;
+            case GameManager.Difficulty.Hard:
+                targetPanel = hardPanel;
+                break;
+        }
+        
+        targetPanel?.SetActive(true);
+        
+        // ランキングデータを更新
         UpdateRankingDisplay();
     }
     #endregion
@@ -506,19 +575,62 @@ public class UIManager : MonoBehaviour
             
             if (rankingData != null)
             {
-                UpdateRankingTexts("Easy", rankingData.easyScores);
-                UpdateRankingTexts("Normal", rankingData.normalScores);
-                UpdateRankingTexts("Hard", rankingData.hardScores);
+                // 現在選択されているタブのランキングのみ更新
+                switch (_currentRankingTab)
+                {
+                    case GameManager.Difficulty.Easy:
+                        UpdateRankingTextsForPanel("EasyPanel", rankingData.easyScores);
+                        break;
+                    case GameManager.Difficulty.Normal:
+                        UpdateRankingTextsForPanel("NormalPanel", rankingData.normalScores);
+                        break;
+                    case GameManager.Difficulty.Hard:
+                        UpdateRankingTextsForPanel("HardPanel", rankingData.hardScores);
+                        break;
+                }
             }
         }
     }
 
-    private void UpdateRankingTexts(string difficulty, int[] scores)
+    private void UpdateRankingTextsForPanel(string panelName, int[] scores)
     {
-        for (int i = 0; i < 10 && i < scores.Length; i++)
+        var panel = FindObjectInPanel(rankingPanel, panelName);
+        if (panel == null) return;
+        
+        // Section1 (Rank1-5) を更新
+        var section1 = FindObjectInPanel(panel, "Section1");
+        if (section1 != null)
         {
-            var rankText = FindTextInPanel(rankingPanel, $"{difficulty}Rank{i + 1}");
-            rankText?.SetText($"{i + 1}. {scores[i]}");
+            for (int i = 0; i < 5 && i < scores.Length; i++)
+            {
+                var rankText = FindTextInPanel(section1, $"Rank{i + 1}");
+                if (scores[i] > 0)
+                {
+                    rankText?.SetText($"{i + 1}. {scores[i]}");
+                }
+                else
+                {
+                    rankText?.SetText($"{i + 1}. ---");
+                }
+            }
+        }
+        
+        // Section2 (Rank6-10) を更新
+        var section2 = FindObjectInPanel(panel, "Section2");
+        if (section2 != null)
+        {
+            for (int i = 5; i < 10 && i < scores.Length; i++)
+            {
+                var rankText = FindTextInPanel(section2, $"Rank{i + 1}");
+                if (scores[i] > 0)
+                {
+                    rankText?.SetText($"{i + 1}. {scores[i]}");
+                }
+                else
+                {
+                    rankText?.SetText($"{i + 1}. ---");
+                }
+            }
         }
     }
     #endregion
@@ -797,4 +909,382 @@ public class UIManager : MonoBehaviour
         return _timingBar.rect.width;
     }
     #endregion
+
+    private void Update()
+    {
+        // パスワードダイアログがアクティブな場合のEnterキー処理のみ
+        if (_isPasswordDialogActive)
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.enterKey.wasPressedThisFrame)
+            {
+                ConfirmPasswordFromInputField();
+            }
+        }
+    }
+    
+    private void HandlePasswordInput()
+    {
+        // 新しいInput Systemを使用したキーボード入力処理
+        var keyboard = Keyboard.current;
+        if (keyboard == null) return;
+        
+        // Enterキーの処理
+        if (keyboard.enterKey.wasPressedThisFrame)
+        {
+            ConfirmPassword();
+            return;
+        }
+        
+        // Backspaceキーの処理
+        if (keyboard.backspaceKey.wasPressedThisFrame)
+        {
+            if (_currentPasswordInput.Length > 0)
+            {
+                _currentPasswordInput = _currentPasswordInput.Substring(0, _currentPasswordInput.Length - 1);
+                Debug.Log($"Password after backspace: '{_currentPasswordInput}' (length: {_currentPasswordInput.Length})");
+                UpdatePasswordDisplay();
+            }
+            return;
+        }
+        
+        // 英数字キーの処理（最大10文字まで）
+        if (_currentPasswordInput.Length < 10)
+        {
+            // 数字キー (0-9)
+            for (int i = 0; i <= 9; i++)
+            {
+                var digitKey = (Key)((int)Key.Digit0 + i);
+                if (keyboard[digitKey].wasPressedThisFrame)
+                {
+                    _currentPasswordInput += i.ToString();
+                    Debug.Log($"Digit {i} pressed. Password: '{_currentPasswordInput}' (length: {_currentPasswordInput.Length})");
+                    UpdatePasswordDisplay();
+                    return;
+                }
+            }
+            
+            // アルファベットキー (a-z)
+            for (int i = 0; i < 26; i++)
+            {
+                var letterKey = (Key)((int)Key.A + i);
+                if (keyboard[letterKey].wasPressedThisFrame)
+                {
+                    char letter = (char)('a' + i);
+                    _currentPasswordInput += letter;
+                    Debug.Log($"Letter {letter} pressed. Password: '{_currentPasswordInput}' (length: {_currentPasswordInput.Length})");
+                    UpdatePasswordDisplay();
+                    return;
+                }
+            }
+        }
+    }
+    
+    private void UpdatePasswordDisplay()
+    {
+        Debug.Log($"UpdatePasswordDisplay called. Current password: '{_currentPasswordInput}' (length: {_currentPasswordInput.Length})");
+        
+        // パスワードダイアログパネル内のPasswordInputFieldテキストを更新
+        var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+        if (passwordDialogPanel != null)
+        {
+            Debug.Log("PasswordDialogPanel found");
+            var passwordInputField = passwordDialogPanel.transform.Find("PasswordInputField");
+            if (passwordInputField != null)
+            {
+                Debug.Log("PasswordInputField found");
+                // InputFieldコンポーネントを取得してテキストを直接設定
+                var inputField = passwordInputField.GetComponent<TMPro.TMP_InputField>();
+                if (inputField != null)
+                {
+                    // InputFieldのテキストを直接設定（アスタリスク表示）
+                    string displayText = new string('*', _currentPasswordInput.Length);
+                    Debug.Log($"Setting InputField text to: '{displayText}'");
+                    inputField.text = displayText;
+                    
+                    // InputFieldの内部状態も強制的にリセット
+                    inputField.SetTextWithoutNotify(displayText);
+                    
+                    // カーソル位置をテキストの末尾に設定
+                    inputField.caretPosition = displayText.Length;
+                    inputField.stringPosition = displayText.Length;
+                    
+                    Debug.Log($"InputField text after setting: '{inputField.text}'");
+                }
+                else
+                {
+                    Debug.Log("TMP_InputField component not found, trying TextMeshProUGUI");
+                    // TMP_InputFieldが見つからない場合は、従来のTextコンポーネントを使用
+                    var passwordText = FindTextInPanel(passwordDialogPanel, "PasswordInputField");
+                    if (passwordText != null)
+                    {
+                        string displayText = new string('*', _currentPasswordInput.Length);
+                        Debug.Log($"Setting TextMeshProUGUI text to: '{displayText}'");
+                        // 入力中のパスワードを表示（セキュリティのためにアスタリスクに置き換え）
+                        passwordText.SetText(displayText);
+                    }
+                    else
+                    {
+                        Debug.LogError("Neither TMP_InputField nor TextMeshProUGUI found for PasswordInputField");
+                    }
+                }
+            }
+            else
+            {
+                Debug.LogError("PasswordInputField not found in PasswordDialogPanel");
+            }
+        }
+        else
+        {
+            Debug.LogError("PasswordDialogPanel not found");
+        }
+    }
+    
+    private void ConfirmPassword()
+    {
+        if (RankingManager.Instance != null)
+        {
+            bool success = RankingManager.Instance.ClearRankingWithPassword(_currentPasswordInput);
+            
+            if (success)
+            {
+                // パスワードが正しい場合、ランキングをリセット
+                HidePasswordDialog();
+                
+                // ランキング表示を更新
+                UpdateRankingDisplay();
+                
+                // 成功メッセージを表示
+                StartCoroutine(ShowResetSuccessMessage());
+            }
+            else
+            {
+                // パスワードが間違っている場合
+                StartCoroutine(ShowPasswordErrorMessage());
+                
+                // 入力フィールドを完全にクリア
+                ResetPasswordInputField();
+            }
+        }
+        else
+        {
+            Debug.LogError("UIManager: RankingManager.Instance is null!");
+            HidePasswordDialog();
+        }
+    }
+    
+    private IEnumerator ShowResetSuccessMessage()
+    {
+        // パスワードダイアログパネル内の成功メッセージを表示
+        var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+        if (passwordDialogPanel != null)
+        {
+            var messageText = FindTextInPanel(passwordDialogPanel, "MessageText");
+            if (messageText != null)
+            {
+                messageText.SetText("ランキングをリセットしました");
+                messageText.color = Color.green;
+                messageText.gameObject.SetActive(true);
+                
+                yield return new WaitForSeconds(2f);
+                
+                messageText.gameObject.SetActive(false);
+            }
+        }
+    }
+    
+    private IEnumerator ShowPasswordErrorMessage()
+    {
+        // パスワードダイアログパネル内のエラーメッセージを表示
+        var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+        if (passwordDialogPanel != null)
+        {
+            var messageText = FindTextInPanel(passwordDialogPanel, "MessageText");
+            if (messageText != null)
+            {
+                messageText.SetText("パスワードが間違っています");
+                messageText.color = Color.red;
+                messageText.gameObject.SetActive(true);
+                
+                yield return new WaitForSeconds(2f);
+                
+                messageText.gameObject.SetActive(false);
+            }
+        }
+    }
+    
+    // パスワードダイアログを表示するメソッド
+    public void ShowPasswordDialog()
+    {
+        Debug.Log("ShowPasswordDialog called");
+        
+        // すでに表示中であれば何もしない
+        if (_isPasswordDialogActive) return;
+        
+        _isPasswordDialogActive = true;
+        
+        // ランキングパネルを表示
+        if (rankingPanel != null)
+        {
+            rankingPanel.SetActive(true);
+            
+            // PasswordDialogPanelを有効化
+            var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+            if (passwordDialogPanel != null)
+            {
+                passwordDialogPanel.SetActive(true);
+            }
+            else
+            {
+                Debug.LogError("UIManager: PasswordDialogPanel not found in rankingPanel!");
+            }
+            
+            // パスワード入力フィールドの完全な初期化
+            ResetPasswordInputField();
+        }
+    }
+    
+    // パスワードダイアログを非表示にするメソッド
+    public void HidePasswordDialog()
+    {
+        Debug.Log("HidePasswordDialog called");
+        
+        _isPasswordDialogActive = false;
+        
+        // PasswordDialogPanelを無効化
+        if (rankingPanel != null)
+        {
+            var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+            if (passwordDialogPanel != null)
+            {
+                passwordDialogPanel.SetActive(false);
+            }
+        }
+    }
+    
+    // パスワード入力フィールドを完全にリセットするメソッド
+    private void ResetPasswordInputField()
+    {
+        var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+        if (passwordDialogPanel != null)
+        {
+            var passwordInputField = passwordDialogPanel.transform.Find("PasswordInputField");
+            if (passwordInputField != null)
+            {
+                // InputFieldコンポーネントを取得
+                var inputField = passwordInputField.GetComponent<TMPro.TMP_InputField>();
+                if (inputField != null)
+                {
+                    // InputFieldを完全にリセット
+                    inputField.text = "";
+                    inputField.SetTextWithoutNotify("");
+                    
+                    // カーソル位置をリセット
+                    inputField.caretPosition = 0;
+                    inputField.stringPosition = 0;
+                    
+                    // フォーカスを外す
+                    inputField.DeactivateInputField();
+                    
+                    // 一度非アクティブにしてからアクティブにする（完全リセットのため）
+                    inputField.gameObject.SetActive(false);
+                    inputField.gameObject.SetActive(true);
+                }
+                else
+                {
+                    // TMP_InputFieldが見つからない場合は、Textコンポーネントをリセット
+                    var passwordText = FindTextInPanel(passwordDialogPanel, "PasswordInputField");
+                    if (passwordText != null)
+                    {
+                        passwordText.SetText("");
+                    }
+                }
+            }
+        }
+        
+        // 内部状態もリセット
+        _currentPasswordInput = "";
+    }
+    
+    // InputFieldから直接パスワードを取得して確認するメソッド
+    private void ConfirmPasswordFromInputField()
+    {
+        Debug.Log("ConfirmPasswordFromInputField called");
+        
+        var passwordDialogPanel = FindObjectInPanel(rankingPanel, "PasswordDialogPanel");
+        if (passwordDialogPanel != null)
+        {
+            var passwordInputField = passwordDialogPanel.transform.Find("PasswordInputField");
+            if (passwordInputField != null)
+            {
+                var inputField = passwordInputField.GetComponent<TMPro.TMP_InputField>();
+                if (inputField != null)
+                {
+                    // InputFieldから直接テキストを取得
+                    string inputPassword = inputField.text;
+                    Debug.Log($"Password from InputField: '{inputPassword}' (length: {inputPassword.Length})");
+                    
+                    if (RankingManager.Instance != null)
+                    {
+                        bool success = RankingManager.Instance.ClearRankingWithPassword(inputPassword);
+                        
+                        if (success)
+                        {
+                            // パスワードが正しい場合、ランキングをリセット
+                            HidePasswordDialog();
+                            
+                            // ランキング表示を更新
+                            UpdateRankingDisplay();
+                            
+                            // 成功メッセージを表示
+                            StartCoroutine(ShowResetSuccessMessage());
+                        }
+                        else
+                        {
+                            // パスワードが間違っている場合
+                            StartCoroutine(ShowPasswordErrorMessage());
+                            
+                            // 入力フィールドを完全にクリア
+                            ResetPasswordInputField();
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError("UIManager: RankingManager.Instance is null!");
+                        HidePasswordDialog();
+                    }
+                }
+                else
+                {
+                    Debug.LogError("TMP_InputField component not found for PasswordInputField");
+                    HidePasswordDialog();
+                }
+            }
+            else
+            {
+                Debug.LogError("PasswordInputField not found in PasswordDialogPanel");
+                HidePasswordDialog();
+            }
+        }
+        else
+        {
+            Debug.LogError("PasswordDialogPanel not found");
+            HidePasswordDialog();
+        }
+    }
+    
+    // BackButton専用の処理メソッド
+    private void OnBackButtonPressed()
+    {
+        Debug.Log("OnBackButtonPressed called");
+        
+        // パスワードダイアログがアクティブな場合は非アクティブにする
+        if (_isPasswordDialogActive)
+        {
+            HidePasswordDialog();
+        }
+        
+        // タイトル画面に戻る
+        ShowTitleScreen();
+    }
 }

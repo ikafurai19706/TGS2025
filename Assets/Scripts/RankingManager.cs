@@ -76,6 +76,20 @@ public class RankingManager : MonoBehaviour
         _rankingData = new RankingData();
         SaveRankingData();
     }
+    
+    // パスワード付きリセット機能を追加
+    public bool ClearRankingWithPassword(string password)
+    {
+        const string correctPassword = "reset123"; // リセット用パスワード
+        Debug.Log(password);
+        if (password == correctPassword)
+        {
+            ClearRanking();
+            return true;
+        }
+        
+        return false;
+    }
     #endregion
 
     #region Private Methods
