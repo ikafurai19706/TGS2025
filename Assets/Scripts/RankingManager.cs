@@ -9,11 +9,24 @@ public class RankingManager : MonoBehaviour
 
     #region Data Structure
     [System.Serializable]
+    public class RankingEntry
+    {
+        public string initials;
+        public int score;
+        
+        public RankingEntry(string initials, int score)
+        {
+            this.initials = initials;
+            this.score = score;
+        }
+    }
+    
+    [System.Serializable]
     public class RankingData
     {
-        public int[] easyScores = new int[10];
-        public int[] normalScores = new int[10];
-        public int[] hardScores = new int[10];
+        public List<RankingEntry> easyScores = new List<RankingEntry>();
+        public List<RankingEntry> normalScores = new List<RankingEntry>();
+        public List<RankingEntry> hardScores = new List<RankingEntry>();
     }
     #endregion
 
@@ -39,21 +52,34 @@ public class RankingManager : MonoBehaviour
     #endregion
 
     #region Public Methods
-    public void AddScore(GameManager.Difficulty difficulty, int score)
+    // 10位以内かどうかを判定する
+    public bool IsTop10Score(GameManager.Difficulty difficulty, int score)
     {
-        int[] targetArray = GetScoresArray(difficulty);
+        List<RankingEntry> targetList = GetScoresList(difficulty);
         
-        // 新しいスコアを追加
-        List<int> scoreList = new List<int>(targetArray);
-        scoreList.Add(score);
+        // 10位未満の場合は必ずランクイン
+        if (targetList.Count < 10)
+            return true;
+            
+        // 10位のスコアと比較
+        return score > targetList[9].score;
+    }
+    
+    // イニシャルとスコアを追加
+    public void AddScore(GameManager.Difficulty difficulty, int score, string initials = "")
+    {
+        List<RankingEntry> targetList = GetScoresList(difficulty);
         
-        // 降順でソート
-        scoreList.Sort((a, b) => b.CompareTo(a));
+        // 新しいエントリを追加
+        targetList.Add(new RankingEntry(initials, score));
+        
+        // スコア順でソート（降順）
+        targetList.Sort((a, b) => b.score.CompareTo(a.score));
         
         // 上位10位まで保持
-        for (int i = 0; i < Mathf.Min(10, scoreList.Count); i++)
+        if (targetList.Count > 10)
         {
-            targetArray[i] = scoreList[i];
+            targetList.RemoveRange(10, targetList.Count - 10);
         }
         
         // データを保存
@@ -67,8 +93,8 @@ public class RankingManager : MonoBehaviour
 
     public int GetBestScore(GameManager.Difficulty difficulty)
     {
-        int[] scores = GetScoresArray(difficulty);
-        return scores.Length > 0 ? scores[0] : 0;
+        List<RankingEntry> scores = GetScoresList(difficulty);
+        return scores.Count > 0 ? scores[0].score : 0;
     }
 
     public void ClearRanking()
@@ -93,7 +119,7 @@ public class RankingManager : MonoBehaviour
     #endregion
 
     #region Private Methods
-    private int[] GetScoresArray(GameManager.Difficulty difficulty)
+    private List<RankingEntry> GetScoresList(GameManager.Difficulty difficulty)
     {
         switch (difficulty)
         {
@@ -102,6 +128,18 @@ public class RankingManager : MonoBehaviour
             case GameManager.Difficulty.Hard: return _rankingData.hardScores;
             default: return _rankingData.normalScores;
         }
+    }
+
+    // 後方互換性のための変換メソッド
+    private int[] GetScoresArray(GameManager.Difficulty difficulty)
+    {
+        List<RankingEntry> entries = GetScoresList(difficulty);
+        int[] scores = new int[entries.Count];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            scores[i] = entries[i].score;
+        }
+        return scores;
     }
 
     private void LoadRankingData()
