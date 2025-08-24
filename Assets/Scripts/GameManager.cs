@@ -430,17 +430,27 @@ public class GameManager : MonoBehaviour
         int finalScore = CalculateScore(gameTime, repairRate, timingBonus);
         string rank = CalculateRank(finalScore, success);
         
-        // ランキングに記録
+        // 10位以内の判定
+        bool isTop10 = false;
         if (RankingManager.Instance)
         {
-            RankingManager.Instance.AddScore(_currentDifficulty, finalScore);
+            isTop10 = RankingManager.Instance.IsTop10Score(_currentDifficulty, finalScore);
         }
         
         // リザルト画面表示
         if (UIManager.Instance)
         {
-            UIManager.Instance.ShowResult(gameTime, repairRate, timingBonus, finalScore, rank);
+            UIManager.Instance.ShowResult(gameTime, repairRate, timingBonus, finalScore, rank, isTop10, _currentDifficulty);
         }
+    }
+    
+    // イニシャル入力後にランキングに追加するメソッド（UIManagerが直接処理するため非推奨）
+    [System.Obsolete("このメソッドは使用されていません。UIManagerが直接RankingManagerにスコアを保存します。")]
+    public void SaveScoreWithInitials(string initials)
+    {
+        // このメソッドは現在使用されていません
+        // UIManagerが直接RankingManagerにスコアを保存するため
+        Debug.LogWarning("GameManager.SaveScoreWithInitials is deprecated. UIManager handles score saving directly.");
     }
     
     private float GetRepairRate()

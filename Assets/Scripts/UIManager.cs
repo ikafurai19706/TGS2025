@@ -18,6 +18,7 @@ public class UIManager : MonoBehaviour
     public GameObject resultPanel;
     public GameObject rankingPanel;
     public GameObject countLeftPanel; // CountLeftPanelを独立したパネルとして追加
+    public GameObject initialsInputPanel; // イニシャル入力パネルを追加
     
     [Header("Timing UI")]
     public GameObject timingUIPanel;
@@ -44,6 +45,17 @@ public class UIManager : MonoBehaviour
     // Password Dialog State
     private bool _isPasswordDialogActive = false;
     private string _currentPasswordInput = "";
+    
+    // Initials Input State
+    private bool _isInitialsInputActive = false;
+    private string _currentInitialsInput = "";
+    private GameManager.Difficulty _pendingDifficulty;
+    
+    // Current game result data (for initials input)
+    private int _currentScore = 0;
+    private float _currentTime = 0f;
+    private float _currentRepairRate = 0f;
+    private float _currentTimingBonus = 0f;
     #endregion
 
     #region Unity Lifecycle
@@ -156,6 +168,7 @@ public class UIManager : MonoBehaviour
         resultPanel?.SetActive(false);
         rankingPanel?.SetActive(false);
         countLeftPanel?.SetActive(false); // CountLeftPanelも非表示にする
+        initialsInputPanel?.SetActive(false);
         
         // TimingUIPanelは独立して管理（常に非表示でスタート）
         timingUIPanel?.SetActive(false);
@@ -204,8 +217,9 @@ public class UIManager : MonoBehaviour
         gameHUDPanel?.SetActive(true);
     }
 
-    public void ShowResult(float time, float repairRate, float timingBonus, int score, string rank)
+    public void ShowResult(float time, float repairRate, float timingBonus, int score, string rank, bool isTop10, GameManager.Difficulty difficulty)
     {
+        // リザルト画面を表示
         HideAllPanels();
         resultPanel?.SetActive(true);
 
@@ -215,12 +229,35 @@ public class UIManager : MonoBehaviour
         FindTextInPanel(resultPanel, "TimingBonusText")?.SetText($"タイミングボーナス: {timingBonus:F2}");
         FindTextInPanel(resultPanel, "ScoreText")?.SetText($"スコア: {score}");
         FindTextInPanel(resultPanel, "RankText")?.SetText($"ランク: {rank}");
+        
+        // 10位以内の場合はイニシャル入力画面を表示
+        if (isTop10)
+        {
+            ShowInitialsInput(difficulty);
+        }
+        else
+        {
+            // 10位以内でない場合のみ、ランキングに名前なしでスコアを保存
+            if (RankingManager.Instance != null)
+            {
+                RankingManager.Instance.AddScore(difficulty, score, "");
+            }
+        }
+        
+        // 現在のスコア情報を記録
+        _currentScore = score;
+        _currentTime = time;
+        _currentRepairRate = repairRate;
+        _currentTimingBonus = timingBonus;
     }
 
     public void ShowRanking()
     {
         HideAllPanels();
         rankingPanel?.SetActive(true);
+        
+        // PasswordDialogPanelを必ず非表示にする
+        HidePasswordDialog();
         
         // デフォルトでEasyタブを選択
         _currentRankingTab = GameManager.Difficulty.Easy;
@@ -592,7 +629,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private void UpdateRankingTextsForPanel(string panelName, int[] scores)
+    private void UpdateRankingTextsForPanel(string panelName, System.Collections.Generic.List<RankingManager.RankingEntry> entries)
     {
         var panel = FindObjectInPanel(rankingPanel, panelName);
         if (panel == null) return;
@@ -601,16 +638,17 @@ public class UIManager : MonoBehaviour
         var section1 = FindObjectInPanel(panel, "Section1");
         if (section1 != null)
         {
-            for (int i = 0; i < 5 && i < scores.Length; i++)
+            for (int i = 0; i < 5; i++)
             {
                 var rankText = FindTextInPanel(section1, $"Rank{i + 1}");
-                if (scores[i] > 0)
+                if (i < entries.Count && entries[i].score > 0)
                 {
-                    rankText?.SetText($"{i + 1}. {scores[i]}");
+                    string initials = string.IsNullOrEmpty(entries[i].initials) ? "---" : entries[i].initials;
+                    rankText?.SetText($"{i + 1}. {initials} {entries[i].score}");
                 }
                 else
                 {
-                    rankText?.SetText($"{i + 1}. ---");
+                    rankText?.SetText($"{i + 1}. --- ---");
                 }
             }
         }
@@ -619,16 +657,17 @@ public class UIManager : MonoBehaviour
         var section2 = FindObjectInPanel(panel, "Section2");
         if (section2 != null)
         {
-            for (int i = 5; i < 10 && i < scores.Length; i++)
+            for (int i = 5; i < 10; i++)
             {
                 var rankText = FindTextInPanel(section2, $"Rank{i + 1}");
-                if (scores[i] > 0)
+                if (i < entries.Count && entries[i].score > 0)
                 {
-                    rankText?.SetText($"{i + 1}. {scores[i]}");
+                    string initials = string.IsNullOrEmpty(entries[i].initials) ? "---" : entries[i].initials;
+                    rankText?.SetText($"{i + 1}. {initials} {entries[i].score}");
                 }
                 else
                 {
-                    rankText?.SetText($"{i + 1}. ---");
+                    rankText?.SetText($"{i + 1}. --- ---");
                 }
             }
         }
@@ -919,6 +958,18 @@ public class UIManager : MonoBehaviour
             if (keyboard != null && keyboard.enterKey.wasPressedThisFrame)
             {
                 ConfirmPasswordFromInputField();
+            }
+        }
+        
+        // イニシャル入力パネルがアクティブな場合の処理
+        if (_isInitialsInputActive)
+        {
+            HandleInitialsInput();
+            
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.enterKey.wasPressedThisFrame)
+            {
+                ConfirmInitialsInput();
             }
         }
     }
@@ -1287,4 +1338,122 @@ public class UIManager : MonoBehaviour
         // タイトル画面に戻る
         ShowTitleScreen();
     }
+
+    #region Initials Input Management
+    public void ShowInitialsInput(GameManager.Difficulty difficulty)
+    {
+        initialsInputPanel?.SetActive(true);
+        _pendingDifficulty = difficulty;
+        _isInitialsInputActive = true;
+        
+        // イニシャル入力パネルの初期化
+        FindTextInPanel(initialsInputPanel, "InitialsText")?.SetText("___");
+        FindTextInPanel(initialsInputPanel, "InstructionText")?.SetText("名前をアルファベットで入力してください");
+        
+        // 確定ボタンのイベント設定
+        var confirmButton = FindButtonInPanel(initialsInputPanel, "ConfirmButton");
+        if (confirmButton != null)
+        {
+            confirmButton.onClick.RemoveAllListeners();
+            confirmButton.onClick.AddListener(ConfirmInitialsInput);
+        }
+        
+        // キャンセルボタンのイベント設定
+        var cancelButton = FindButtonInPanel(initialsInputPanel, "CancelButton");
+        if (cancelButton != null)
+        {
+            cancelButton.onClick.RemoveAllListeners();
+            cancelButton.onClick.AddListener(() => {
+                // キャンセルの場合は名前なしでスコアを保存
+                if (RankingManager.Instance != null)
+                {
+                    RankingManager.Instance.AddScore(_pendingDifficulty, _currentScore, "");
+                }
+                HideInitialsInputPanel();
+            });
+        }
+    }
+    
+    public void ShowInitialsInputPanel(GameManager.Difficulty difficulty)
+    {
+        HideAllPanels();
+        initialsInputPanel?.SetActive(true);
+        _pendingDifficulty = difficulty;
+        _isInitialsInputActive = true;
+    }
+
+    public void HideInitialsInputPanel()
+    {
+        initialsInputPanel?.SetActive(false);
+        _isInitialsInputActive = false;
+        _currentInitialsInput = "";
+    }
+
+    private void ConfirmInitialsInput()
+    {
+        // イニシャルの長さチェック（ここでは3文字固定と仮定）
+        if (_currentInitialsInput.Length == 3)
+        {
+            // RankingManagerに直接スコアとイニシャルを保存（GameManager経由ではなく）
+            if (RankingManager.Instance != null)
+            {
+                RankingManager.Instance.AddScore(_pendingDifficulty, _currentScore, _currentInitialsInput);
+            }
+            
+            // パネルを隠す（タイトル画面には戻らない）
+            HideInitialsInputPanel();
+        }
+        else
+        {
+            // エラーメッセージ表示
+            FindTextInPanel(initialsInputPanel, "InstructionText")?.SetText("3文字で入力してください");
+        }
+    }
+
+    private void HandleInitialsInput()
+    {
+        // 新しいInput Systemを使用したキーボード入力処理
+        var keyboard = Keyboard.current;
+        if (keyboard == null) return;
+        
+        // Backspaceキーの処理
+        if (keyboard.backspaceKey.wasPressedThisFrame)
+        {
+            if (_currentInitialsInput.Length > 0)
+            {
+                _currentInitialsInput = _currentInitialsInput.Substring(0, _currentInitialsInput.Length - 1);
+                UpdateInitialsDisplay();
+            }
+            return;
+        }
+        
+        // 英字キーの処理（大文字に変換）
+        for (char c = 'A'; c <= 'Z'; c++)
+        {
+            var key = (Key)System.Enum.Parse(typeof(Key), c.ToString());
+            if (keyboard[key].wasPressedThisFrame)
+            {
+                // すでに3文字入力されている場合は無視
+                if (_currentInitialsInput.Length >= 3) return;
+                
+                _currentInitialsInput += c;
+                UpdateInitialsDisplay();
+                return;
+            }
+        }
+    }
+    
+    private void UpdateInitialsDisplay()
+    {
+        // イニシャル入力パネル内のInitialsTextを更新
+        var initialsText = FindTextInPanel(initialsInputPanel, "InitialsText");
+        initialsText?.SetText(_currentInitialsInput.PadRight(3, '_')); // 3文字まで_で埋める
+    }
+    
+    private int GetCurrentScore()
+    {
+        // UIManagerで保持している現在のスコア情報を返す
+        return _currentScore;
+    }
+    #endregion
 }
