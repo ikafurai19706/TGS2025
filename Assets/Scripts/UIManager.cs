@@ -256,6 +256,9 @@ public class UIManager : MonoBehaviour
         HideAllPanels();
         rankingPanel?.SetActive(true);
         
+        // PasswordDialogPanelを必ず非表示にする
+        HidePasswordDialog();
+        
         // デフォルトでEasyタブを選択
         _currentRankingTab = GameManager.Difficulty.Easy;
         SwitchRankingTab(_currentRankingTab);
