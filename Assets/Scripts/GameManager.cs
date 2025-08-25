@@ -24,12 +24,13 @@ public class GameManager : MonoBehaviour
         public int repairHits = 5;
         public float timeLimit = 60f;
         public float timingWindow = 0.5f; // Perfect判定の時間窓
+        public int fragileCount = 4; // Fragile足場の数
     }
     
     [Header("Difficulty Settings")]
-    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, repairHits = 5, timeLimit = 30f, timingWindow = 0.8f };
-    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, repairHits = 7, timeLimit = 45f, timingWindow = 0.5f };
-    public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, repairHits = 9, timeLimit = 60f, timingWindow = 0.3f };
+    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, repairHits = 5, timeLimit = 30f, timingWindow = 0.8f, fragileCount = 3 };
+    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, repairHits = 7, timeLimit = 45f, timingWindow = 0.5f, fragileCount = 5 };
+    public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, repairHits = 9, timeLimit = 60f, timingWindow = 0.3f, fragileCount = 7 };
     #endregion
 
     #region Private Fields
@@ -125,7 +126,31 @@ public class GameManager : MonoBehaviour
         if (_isGameOver) return;
 
         _isGameOver = true;
+        
+        Debug.Log("TriggerBridgeCollapse: 橋崩落開始");
+        
+        // 橋崩落音を1秒遅延して再生
+        StartCoroutine(PlayDelayedCollapseSound());
+        
         StartCoroutine(ChainCollapseBridge());
+    }
+
+    // 橋崩落音を遅延再生するコルーチン
+    private IEnumerator PlayDelayedCollapseSound()
+    {
+        // 1秒待機
+        yield return new WaitForSeconds(1f);
+        
+        // 橋全体の崩落音を一回だけ再生
+        if (AudioManager.Instance != null)
+        {
+            Debug.Log("AudioManager found, playing bridge collapse sound (after 1s delay)");
+            AudioManager.Instance.PlayBridgeCollapseSfx();
+        }
+        else
+        {
+            Debug.LogError("AudioManager.Instance is null!");
+        }
     }
 
     public void RestartGame()
@@ -152,6 +177,13 @@ public class GameManager : MonoBehaviour
         
         InitializeGameStats();
         
+        // UI初期表示を更新
+        if (UIManager.Instance)
+        {
+            UIManager.Instance.UpdateCombo(_currentCombo);
+            UIManager.Instance.UpdateRepairRate(0f);
+        }
+        
         // チュートリアル中はメインゲーム用の橋生成をスキップ
         if (_currentState != GameState.Tutorial)
         {
@@ -171,6 +203,12 @@ public class GameManager : MonoBehaviour
     public void SetCurrentState(GameState state)
     {
         _currentState = state;
+        
+        // AudioManagerに状態変更を通知
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.OnGameStateChanged(state);
+        }
     }
     
     // チュートリアルモードかどうかを判定するメソッドを追加
@@ -275,7 +313,7 @@ public class GameManager : MonoBehaviour
         _selectedDifficulty = difficulty;
         _currentDifficulty = difficulty; // この行を追加
         _currentConfig = GetDifficultyConfig(difficulty); // この行を追加して難易度設定を即座に反映
-        _currentState = GameState.Tutorial;
+        SetCurrentState(GameState.Tutorial); // 直接設定ではなくSetCurrentStateを使用してAudioManagerに通知
         _tutorialPlatformsCompleted = 0;
         
         // チュートリアル用足場を自動生成
@@ -336,6 +374,8 @@ public class GameManager : MonoBehaviour
     #region Private Methods
     private IEnumerator ChainCollapseBridge()
     {
+        Debug.Log("ChainCollapseBridge: 開始");
+        
         // プレイヤーの移動を停止し、Rotation Constraintを解除
         var player = FindFirstObjectByType<PlayerController>();
         if (player)
@@ -344,16 +384,46 @@ public class GameManager : MonoBehaviour
             player.OnBridgeCollapse(); // 橋崩落時にRotation Constraintを解除
         }
 
-        // すべての足場を順次崩落
-        foreach (Platform platform in _allPlatforms)
+        // 最初に一度だけ足場リストを更新
+        RefreshPlatformList();
+        
+        // 崩落対象の足場をリストに保存（一度だけ検索）
+        List<Platform> platformsToCollapse = new List<Platform>(_allPlatforms);
+        
+        int collapseCount = 0;
+        foreach (Platform platform in platformsToCollapse)
         {
             if (platform && !platform.IsCollapsed())
             {
+                collapseCount++;
+                Debug.Log($"ChainCollapseBridge: 足場 {platform.name} を崩落開始 (#{collapseCount})");
+                float startTime = Time.time;
+                
+                platform.TriggerCollapse();
+                
+                Debug.Log($"ChainCollapseBridge: 間隔待機開始 ({chainCollapseInterval}秒)");
+                yield return new WaitForSeconds(chainCollapseInterval);
+                
+                float elapsed = Time.time - startTime;
+                Debug.Log($"ChainCollapseBridge: 足場 {platform.name} 処理完了 (実際の経過時間: {elapsed:F3}秒)");
+            }
+        }
+        
+        // 最後に追加で生成された足場があるかチェック（fragileをキャッチした場合）
+        Platform[] finalCheck = FindObjectsByType<Platform>(FindObjectsSortMode.None);
+        foreach (Platform platform in finalCheck)
+        {
+            if (platform && !platform.IsCollapsed() && !platformsToCollapse.Contains(platform))
+            {
+                collapseCount++;
+                Debug.Log($"ChainCollapseBridge: 追加足場 {platform.name} を崩落開始 (#{collapseCount})");
                 platform.TriggerCollapse();
                 yield return new WaitForSeconds(chainCollapseInterval);
             }
         }
 
+        Debug.Log("ChainCollapseBridge: 全足場崩落完了");
+        
         // ゲームオーバー処理
         yield return new WaitForSeconds(gameOverDelay);
         ShowGameOver();
@@ -527,7 +597,7 @@ public class GameManager : MonoBehaviour
     private void CompleteTutorial()
     {
         // カウントダウン中の状態に変更
-        _currentState = GameState.TutorialCountdown;
+        SetCurrentState(GameState.TutorialCountdown); // 直接設定ではなくSetCurrentStateを使用
         
         if (UIManager.Instance)
         {

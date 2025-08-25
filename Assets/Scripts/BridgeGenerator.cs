@@ -192,6 +192,12 @@ public class BridgeGenerator : MonoBehaviour
             platform.type = type;
             platform.repairState = state;
             platform.isRepaired = false;
+            
+            // fragile足場の場合、修繕時に落下してくる足場をnormalPlatformPrefabに設定
+            if (type == Platform.PlatformType.Fragile && normalPlatformPrefab != null)
+            {
+                platform.newPlatformPrefab = normalPlatformPrefab;
+            }
         }
         
         // 生成リストに追加
@@ -294,18 +300,8 @@ public class BridgeGenerator : MonoBehaviour
     {
         if (GameManager.Instance)
         {
-            GameManager.Difficulty currentDifficulty = GameManager.Instance.GetCurrentDifficulty();
-            switch (currentDifficulty)
-            {
-                case GameManager.Difficulty.Easy:
-                    return 3;
-                case GameManager.Difficulty.Normal:
-                    return 4;
-                case GameManager.Difficulty.Hard:
-                    return 5;
-                default:
-                    return 4; // デフォルトはNormal
-            }
+            GameManager.DifficultyConfig config = GameManager.Instance.GetCurrentDifficultyConfig();
+            return config.fragileCount;
         }
         
         // GameManagerが利用できない場合のフォールバック
