@@ -294,18 +294,8 @@ public class BridgeGenerator : MonoBehaviour
     {
         if (GameManager.Instance)
         {
-            GameManager.Difficulty currentDifficulty = GameManager.Instance.GetCurrentDifficulty();
-            switch (currentDifficulty)
-            {
-                case GameManager.Difficulty.Easy:
-                    return 3;
-                case GameManager.Difficulty.Normal:
-                    return 4;
-                case GameManager.Difficulty.Hard:
-                    return 5;
-                default:
-                    return 4; // デフォルトはNormal
-            }
+            GameManager.DifficultyConfig config = GameManager.Instance.GetCurrentDifficultyConfig();
+            return config.fragileCount;
         }
         
         // GameManagerが利用できない場合のフォールバック

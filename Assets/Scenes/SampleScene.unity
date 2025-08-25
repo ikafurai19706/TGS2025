@@ -5479,19 +5479,22 @@ MonoBehaviour:
   chainCollapseInterval: 0.1
   easyConfig:
     bridgeLength: 20
-    repairHits: 5
+    repairHits: 9
     timeLimit: 60
     timingWindow: 0.8
+    fragileCount: 5
   normalConfig:
     bridgeLength: 30
-    repairHits: 7
+    repairHits: 11
     timeLimit: 75
     timingWindow: 0.5
+    fragileCount: 8
   hardConfig:
     bridgeLength: 40
-    repairHits: 9
+    repairHits: 16
     timeLimit: 90
     timingWindow: 0.3
+    fragileCount: 12
 --- !u!114 &643547812
 MonoBehaviour:
   m_ObjectHideFlags: 0

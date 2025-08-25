@@ -24,12 +24,13 @@ public class GameManager : MonoBehaviour
         public int repairHits = 5;
         public float timeLimit = 60f;
         public float timingWindow = 0.5f; // Perfect判定の時間窓
+        public int fragileCount = 4; // Fragile足場の数
     }
     
     [Header("Difficulty Settings")]
-    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, repairHits = 5, timeLimit = 30f, timingWindow = 0.8f };
-    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, repairHits = 7, timeLimit = 45f, timingWindow = 0.5f };
-    public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, repairHits = 9, timeLimit = 60f, timingWindow = 0.3f };
+    public DifficultyConfig easyConfig = new DifficultyConfig { bridgeLength = 10, repairHits = 5, timeLimit = 30f, timingWindow = 0.8f, fragileCount = 3 };
+    public DifficultyConfig normalConfig = new DifficultyConfig { bridgeLength = 15, repairHits = 7, timeLimit = 45f, timingWindow = 0.5f, fragileCount = 5 };
+    public DifficultyConfig hardConfig = new DifficultyConfig { bridgeLength = 20, repairHits = 9, timeLimit = 60f, timingWindow = 0.3f, fragileCount = 7 };
     #endregion
 
     #region Private Fields
