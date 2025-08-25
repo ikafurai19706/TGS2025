@@ -19,6 +19,7 @@ public class UIManager : MonoBehaviour
     public GameObject rankingPanel;
     public GameObject countLeftPanel; // CountLeftPanelを独立したパネルとして追加
     public GameObject initialsInputPanel; // イニシャル入力パネルを追加
+    public GameObject commonPanel; // CommonPanelを追加
     
     [Header("Timing UI")]
     public GameObject timingUIPanel;
@@ -56,6 +57,11 @@ public class UIManager : MonoBehaviour
     private float _currentTime = 0f;
     private float _currentRepairRate = 0f;
     private float _currentTimingBonus = 0f;
+
+    // Volume Panel State
+    private bool _isVolumePanelActive = false;
+    private Slider _bgmSlider;
+    private Slider _sfxSlider;
     #endregion
 
     #region Unity Lifecycle
@@ -86,6 +92,7 @@ public class UIManager : MonoBehaviour
         SetupTitleButtons();
         SetupResultButtons();
         SetupRankingButtons();
+        SetupCommonPanel();
         
         // Hide all panels initially
         HideAllPanels();
@@ -160,6 +167,84 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    private void SetupCommonPanel()
+    {
+        if (commonPanel != null)
+        {
+            // VolumeButtonを設定
+            Transform volumePanel = commonPanel.transform.Find("VolumePanel");
+            if (volumePanel != null)
+            {
+                var volumeButton = volumePanel.Find("VolumeButton")?.GetComponent<Button>();
+                volumeButton?.onClick.AddListener(ToggleVolumePanel);
+
+                // BGMスライダーを設定（名前で直接検索）
+                Transform bgmGroup = volumePanel.Find("BGM");
+                if (bgmGroup != null)
+                {
+                    _bgmSlider = bgmGroup.Find("Slider")?.GetComponent<Slider>();
+                    if (_bgmSlider != null)
+                    {
+                        _bgmSlider.minValue = 0f;
+                        _bgmSlider.maxValue = 20f;
+                        _bgmSlider.wholeNumbers = true; // 整数値のみ
+                        // 既存のリスナーをクリアしてから追加
+                        _bgmSlider.onValueChanged.RemoveAllListeners();
+                        _bgmSlider.onValueChanged.AddListener(OnBGMVolumeChanged);
+                        Debug.Log("UIManager: BGM Slider setup completed");
+                    }
+                    else
+                    {
+                        Debug.LogError("UIManager: BGM Slider not found in BGM group");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("UIManager: BGM group not found in VolumePanel");
+                }
+
+                // SFXスライダーを設定（名前で直接検索）
+                Transform sfxGroup = volumePanel.Find("SFX");
+                if (sfxGroup != null)
+                {
+                    _sfxSlider = sfxGroup.Find("Slider")?.GetComponent<Slider>();
+                    if (_sfxSlider != null)
+                    {
+                        _sfxSlider.minValue = 0f;
+                        _sfxSlider.maxValue = 20f;
+                        _sfxSlider.wholeNumbers = true; // 整数値のみ
+                        // 既存のリスナーをクリアしてから追加
+                        _sfxSlider.onValueChanged.RemoveAllListeners();
+                        _sfxSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
+                        Debug.Log("UIManager: SFX Slider setup completed");
+                    }
+                    else
+                    {
+                        Debug.LogError("UIManager: SFX Slider not found in SFX group");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("UIManager: SFX group not found in VolumePanel");
+                }
+
+                // 初期状態では音量調整パネルを非表示
+                SetVolumePanelVisibility(false);
+            }
+            else
+            {
+                Debug.LogError("UIManager: VolumePanel not found in CommonPanel");
+            }
+
+            // CommonPanelを常に表示
+            commonPanel.SetActive(true);
+        }
+        else
+        {
+            Debug.LogError("UIManager: CommonPanel is not assigned");
+        }
+    }
+
     private void HideAllPanels()
     {
         titlePanel?.SetActive(false);
@@ -172,6 +257,9 @@ public class UIManager : MonoBehaviour
         
         // TimingUIPanelは独立して管理（常に非表示でスタート）
         timingUIPanel?.SetActive(false);
+        
+        // CommonPanelは常に表示状態を維持
+        // commonPanel?.SetActive(false); // コメントアウト
     }
     #endregion
 
@@ -200,6 +288,12 @@ public class UIManager : MonoBehaviour
     {
         HideAllPanels();
         titlePanel?.SetActive(true);
+        
+        // ゲーム状態をTitleに変更
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.SetCurrentState(GameManager.GameState.Title);
+        }
     }
 
     public void ShowTutorial(GameManager.Difficulty difficulty)
@@ -215,6 +309,12 @@ public class UIManager : MonoBehaviour
     {
         HideAllPanels();
         gameHUDPanel?.SetActive(true);
+        
+        // ゲーム状態をPlayingに変更
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.SetCurrentState(GameManager.GameState.Playing);
+        }
     }
 
     public void ShowResult(float time, float repairRate, float timingBonus, int score, string rank, bool isTop10, GameManager.Difficulty difficulty)
@@ -222,6 +322,12 @@ public class UIManager : MonoBehaviour
         // リザルト画面を表示
         HideAllPanels();
         resultPanel?.SetActive(true);
+
+        // ゲーム状態をResultに変更
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.SetCurrentState(GameManager.GameState.Result);
+        }
 
         // パネル内のテキストを名前で検索して更新
         FindTextInPanel(resultPanel, "TimeText")?.SetText($"時間: {time:F1}秒");
@@ -258,6 +364,12 @@ public class UIManager : MonoBehaviour
         
         // PasswordDialogPanelを必ず非表示にする
         HidePasswordDialog();
+        
+        // ゲーム状態をTitleに変更（ランキングもタイトル扱い）
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.SetCurrentState(GameManager.GameState.Title);
+        }
         
         // デフォルトでEasyタブを選択
         _currentRankingTab = GameManager.Difficulty.Easy;
@@ -490,6 +602,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    /*
     /// <summary>
     /// アプリケーション終了時の完全なクリーンアップ
     /// </summary>
@@ -512,7 +625,9 @@ public class UIManager : MonoBehaviour
         #if UNITY_EDITOR || DEVELOPMENT_BUILD
         return;
         #endif
-        
+
+        // フォーカスを失った場合のリセット処理を削除
+        // ゲーム状態を維持するため、何も実行しない
         if (!hasFocus)
         {
             // リリースビルドでのみフォーカスを失った場合のクリーンアップを実行
@@ -520,6 +635,7 @@ public class UIManager : MonoBehaviour
             ShowTitleScreen();
         }
     }
+    */
     
     // 新しいチュートリアル表示メソッド
     public void ShowTutorialWithPlatforms()
@@ -1454,6 +1570,116 @@ public class UIManager : MonoBehaviour
     {
         // UIManagerで保持している現在のスコア情報を返す
         return _currentScore;
+    }
+    #endregion
+
+    #region Volume Control Methods
+    /// <summary>
+    /// 音量調整パネルの表示/非表示を切り替え
+    /// </summary>
+    public void ToggleVolumePanel()
+    {
+        _isVolumePanelActive = !_isVolumePanelActive;
+        SetVolumePanelVisibility(_isVolumePanelActive);
+        
+        if (_isVolumePanelActive)
+        {
+            // パネルが開かれた時、現在の音量値をスライダーに反映
+            UpdateVolumeSliders();
+        }
+    }
+
+    /// <summary>
+    /// 音量調整パネルの表示状態を設定
+    /// </summary>
+    /// <param name="isVisible">表示するかどうか</param>
+    private void SetVolumePanelVisibility(bool isVisible)
+    {
+        if (commonPanel != null)
+        {
+            Transform volumePanel = commonPanel.transform.Find("VolumePanel");
+            if (volumePanel != null)
+            {
+                // BGMとSFXのスライダーグループの表示/非表示を制御
+                Transform bgmGroup = volumePanel.Find("BGM");
+                Transform[] children = new Transform[volumePanel.childCount];
+                for (int i = 0; i < volumePanel.childCount; i++)
+                {
+                    children[i] = volumePanel.GetChild(i);
+                }
+
+                // BGMグループを表示/非表示
+                if (bgmGroup != null)
+                {
+                    bgmGroup.gameObject.SetActive(isVisible);
+                }
+
+                // SFXグループを表示/非表示
+                int bgmIndex = -1;
+                for (int i = 0; i < children.Length; i++)
+                {
+                    if (children[i].name.Contains("BGM"))
+                    {
+                        bgmIndex = i;
+                        break;
+                    }
+                }
+                
+                if (bgmIndex >= 0 && bgmIndex + 1 < children.Length)
+                {
+                    children[bgmIndex + 1].gameObject.SetActive(isVisible);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 現在の音量値をスライダーに反映
+    /// </summary>
+    private void UpdateVolumeSliders()
+    {
+        if (AudioManager.Instance != null)
+        {
+            if (_bgmSlider != null)
+            {
+                // AudioManagerから0.0~1.0の値を取得し、0~20の範囲に変換
+                _bgmSlider.value = AudioManager.Instance.GetBGMVolume() * 20f;
+            }
+            
+            if (_sfxSlider != null)
+            {
+                // AudioManagerから0.0~1.0の値を取得し、0~20の範囲に変換
+                _sfxSlider.value = AudioManager.Instance.GetSfxVolume() * 20f;
+            }
+        }
+    }
+
+    /// <summary>
+    /// BGM音量スライダーの値が変更された時の処理
+    /// </summary>
+    /// <param name="value">新しい音量値（0~20）</param>
+    private void OnBGMVolumeChanged(float value)
+    {
+        if (AudioManager.Instance != null)
+        {
+            // 0~20の値を0.0~1.0の範囲に変換してAudioManagerに渡す
+            float normalizedValue = value / 20f;
+            AudioManager.Instance.SetBGMVolume(normalizedValue);
+        }
+    }
+
+    /// <summary>
+    /// SFX音量スライダーの値が変更された時の処理
+    /// </summary>
+    /// <param name="value">新しい音量値（0~20）</param>
+    private void OnSFXVolumeChanged(float value)
+    {
+        if (AudioManager.Instance != null)
+        {
+            // 0~20の値を0.0~1.0の範囲に変換してAudioManagerに渡す
+            float normalizedValue = value / 20f;
+            AudioManager.Instance.SetSfxVolume(normalizedValue);
+        }
     }
     #endregion
 }

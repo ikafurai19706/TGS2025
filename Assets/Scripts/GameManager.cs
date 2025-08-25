@@ -152,6 +152,13 @@ public class GameManager : MonoBehaviour
         
         InitializeGameStats();
         
+        // UI初期表示を更新
+        if (UIManager.Instance)
+        {
+            UIManager.Instance.UpdateCombo(_currentCombo);
+            UIManager.Instance.UpdateRepairRate(0f);
+        }
+        
         // チュートリアル中はメインゲーム用の橋生成をスキップ
         if (_currentState != GameState.Tutorial)
         {
@@ -171,6 +178,12 @@ public class GameManager : MonoBehaviour
     public void SetCurrentState(GameState state)
     {
         _currentState = state;
+        
+        // AudioManagerに状態変更を通知
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.OnGameStateChanged(state);
+        }
     }
     
     // チュートリアルモードかどうかを判定するメソッドを追加
@@ -275,7 +288,7 @@ public class GameManager : MonoBehaviour
         _selectedDifficulty = difficulty;
         _currentDifficulty = difficulty; // この行を追加
         _currentConfig = GetDifficultyConfig(difficulty); // この行を追加して難易度設定を即座に反映
-        _currentState = GameState.Tutorial;
+        SetCurrentState(GameState.Tutorial); // 直接設定ではなくSetCurrentStateを使用してAudioManagerに通知
         _tutorialPlatformsCompleted = 0;
         
         // チュートリアル用足場を自動生成
@@ -527,7 +540,7 @@ public class GameManager : MonoBehaviour
     private void CompleteTutorial()
     {
         // カウントダウン中の状態に変更
-        _currentState = GameState.TutorialCountdown;
+        SetCurrentState(GameState.TutorialCountdown); // 直接設定ではなくSetCurrentStateを使用
         
         if (UIManager.Instance)
         {
