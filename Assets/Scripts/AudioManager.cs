@@ -20,6 +20,14 @@ public class AudioManager : MonoBehaviour
     public AudioClip gameBGM; // 本ゲーム中のBGM
     #endregion
 
+    #region SFX Clips
+    [Header("SFX Clips")]
+    public AudioClip normalPlatformHitSfx; // 通常足場を叩く効果音
+    public AudioClip fragilePlatformHitSfx; // 脆い足場を叩く効果音
+    public AudioClip repairCompleteSfx; // 修繕完了時の効果音
+    public AudioClip bridgeCollapseSfx; // 橋崩落時の効果音
+    #endregion
+
     #region Private Fields
     private AudioClip _currentBGM;
     private bool _isBGMPlaying;
@@ -267,8 +275,70 @@ public class AudioManager : MonoBehaviour
     {
         if (clip != null && sfxSource != null)
         {
+            Debug.Log($"Playing SFX: {clip.name}");
             sfxSource.PlayOneShot(clip);
         }
+        else
+        {
+            if (clip == null)
+                Debug.LogWarning("PlaySfx: AudioClip is null!");
+            if (sfxSource == null)
+                Debug.LogWarning("PlaySfx: SFX AudioSource is null!");
+        }
+    }
+
+    /// <summary>
+    /// 通常足場を叩く効果音を再生
+    /// </summary>
+    public void PlayNormalPlatformHitSfx()
+    {
+        PlaySfx(normalPlatformHitSfx);
+    }
+
+    /// <summary>
+    /// 脆い足場を叩く効果音を再生
+    /// </summary>
+    public void PlayFragilePlatformHitSfx()
+    {
+        PlaySfx(fragilePlatformHitSfx);
+    }
+
+    /// <summary>
+    /// 修繕完了時の効果音を再生
+    /// </summary>
+    public void PlayRepairCompleteSfx()
+    {
+        PlaySfx(repairCompleteSfx);
+    }
+
+    /// <summary>
+    /// 橋崩落時の効果音を再生
+    /// </summary>
+    public void PlayBridgeCollapseSfx()
+    {
+        Debug.Log("PlayBridgeCollapseSfx called");
+        if (bridgeCollapseSfx == null)
+        {
+            Debug.LogWarning("bridgeCollapseSfx is null! Please assign an audio clip in the AudioManager inspector.");
+            
+            // 代替案：他の音声ファイルでテスト（音が出るかどうかを確認）
+            if (fragilePlatformHitSfx != null)
+            {
+                Debug.Log("Using fragilePlatformHitSfx as fallback for bridge collapse sound");
+                PlaySfx(fragilePlatformHitSfx);
+            }
+            else if (normalPlatformHitSfx != null)
+            {
+                Debug.Log("Using normalPlatformHitSfx as fallback for bridge collapse sound");
+                PlaySfx(normalPlatformHitSfx);
+            }
+            else
+            {
+                Debug.LogError("No fallback audio clips available!");
+            }
+            return;
+        }
+        PlaySfx(bridgeCollapseSfx);
     }
     #endregion
 

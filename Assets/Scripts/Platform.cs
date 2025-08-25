@@ -636,11 +636,8 @@ public class Platform : MonoBehaviour
             collapseEffect.Play();
         }
         
-        // 崩落音再生
-        if (collapseSound != null)
-        {
-            AudioSource.PlayClipAtPoint(collapseSound, transform.position);
-        }
+        // 崩落音はGameManagerで一回だけ再生するため、ここでは再生しない
+        // （個別の足場音再生を無効化）
         
         // カメラシェイクをトリガー（PlayerControllerに通知）
         var player = FindFirstObjectByType<PlayerController>();

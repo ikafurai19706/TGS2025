@@ -125,7 +125,31 @@ public class GameManager : MonoBehaviour
         if (_isGameOver) return;
 
         _isGameOver = true;
+        
+        Debug.Log("TriggerBridgeCollapse: 橋崩落開始");
+        
+        // 橋崩落音を1秒遅延して再生
+        StartCoroutine(PlayDelayedCollapseSound());
+        
         StartCoroutine(ChainCollapseBridge());
+    }
+
+    // 橋崩落音を遅延再生するコルーチン
+    private IEnumerator PlayDelayedCollapseSound()
+    {
+        // 1秒待機
+        yield return new WaitForSeconds(1f);
+        
+        // 橋全体の崩落音を一回だけ再生
+        if (AudioManager.Instance != null)
+        {
+            Debug.Log("AudioManager found, playing bridge collapse sound (after 1s delay)");
+            AudioManager.Instance.PlayBridgeCollapseSfx();
+        }
+        else
+        {
+            Debug.LogError("AudioManager.Instance is null!");
+        }
     }
 
     public void RestartGame()

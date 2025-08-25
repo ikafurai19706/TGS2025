@@ -12143,6 +12143,10 @@ MonoBehaviour:
   titleAndRankingBGM: {fileID: 8300000, guid: a4c0197fc810c6f4c87e2d939c9b90f9, type: 3}
   tutorialBGM: {fileID: 8300000, guid: 5e1722e74904cac47a6ebe27f8744c24, type: 3}
   gameBGM: {fileID: 8300000, guid: 433c865165772944aaf6dd6b7b33b8eb, type: 3}
+  normalPlatformHitSfx: {fileID: 8300000, guid: 8f9790df079abd14f9742b4c1d5a0658, type: 3}
+  fragilePlatformHitSfx: {fileID: 8300000, guid: 7ddf5e4556252c84c9f8c7a429cfbc09, type: 3}
+  repairCompleteSfx: {fileID: 8300000, guid: e52e2b9b242e8e241a284c36e4a325cd, type: 3}
+  bridgeCollapseSfx: {fileID: 8300000, guid: 15ef61b4bdf90714d8a743a47e1b2ab8, type: 3}
 --- !u!4 &1631936533
 Transform:
   m_ObjectHideFlags: 0

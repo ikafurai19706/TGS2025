@@ -498,6 +498,29 @@ public class PlayerController : MonoBehaviour
     {
         StopCurrentSwing();
         _swingCoroutine = StartCoroutine(SwingHammer(HAMMER_SWING_DURATION));
+        
+        // 足場のタイプに応じて効果音を再生
+        if (_targetPlatform != null && AudioManager.Instance != null)
+        {
+            // fragile足場が修繕完了済みの場合はnormal音声を再生
+            if (_targetPlatform.type == Platform.PlatformType.Fragile && 
+                _targetPlatform.repairState == Platform.RepairState.Completed)
+            {
+                AudioManager.Instance.PlayNormalPlatformHitSfx();
+            }
+            else
+            {
+                switch (_targetPlatform.type)
+                {
+                    case Platform.PlatformType.Normal:
+                        AudioManager.Instance.PlayNormalPlatformHitSfx();
+                        break;
+                    case Platform.PlatformType.Fragile:
+                        AudioManager.Instance.PlayFragilePlatformHitSfx();
+                        break;
+                }
+            }
+        }
     }
 
     private void CompleteRepair()
@@ -542,6 +565,12 @@ public class PlayerController : MonoBehaviour
         {
             // Miss以外の場合は修繕を完了
             if (_targetPlatform != null) _targetPlatform.Repair();
+            
+            // 修繕完了時の効果音を再生
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayRepairCompleteSfx();
+            }
             
             // チュートリアル中の場合、ここではカウントを追加しない
             // 足場のキャッチ完了時に追加する
@@ -746,6 +775,30 @@ public class PlayerController : MonoBehaviour
     private IEnumerator MoveWithHammerSwing(float distance, float duration)
     {
         _isMoving = true;
+        
+        // 移動前に足場の効果音を再生
+        if (TryDetectPlatform(out Platform platform) && AudioManager.Instance != null)
+        {
+            // fragile足場が修繕完了済みの場合はnormal音声を再生
+            if (platform.type == Platform.PlatformType.Fragile && 
+                platform.repairState == Platform.RepairState.Completed)
+            {
+                AudioManager.Instance.PlayNormalPlatformHitSfx();
+            }
+            else
+            {
+                switch (platform.type)
+                {
+                    case Platform.PlatformType.Normal:
+                        AudioManager.Instance.PlayNormalPlatformHitSfx();
+                        break;
+                    case Platform.PlatformType.Fragile:
+                        AudioManager.Instance.PlayFragilePlatformHitSfx();
+                        break;
+                }
+            }
+        }
+        
         yield return StartCoroutine(SwingHammer(HAMMER_SWING_DURATION));
         yield return StartCoroutine(MoveZWithEaseOut(distance, duration));
         _isMoving = false;
