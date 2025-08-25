@@ -374,6 +374,8 @@ public class GameManager : MonoBehaviour
     #region Private Methods
     private IEnumerator ChainCollapseBridge()
     {
+        Debug.Log("ChainCollapseBridge: 開始");
+        
         // プレイヤーの移動を停止し、Rotation Constraintを解除
         var player = FindFirstObjectByType<PlayerController>();
         if (player)
@@ -382,16 +384,46 @@ public class GameManager : MonoBehaviour
             player.OnBridgeCollapse(); // 橋崩落時にRotation Constraintを解除
         }
 
-        // すべての足場を順次崩落
-        foreach (Platform platform in _allPlatforms)
+        // 最初に一度だけ足場リストを更新
+        RefreshPlatformList();
+        
+        // 崩落対象の足場をリストに保存（一度だけ検索）
+        List<Platform> platformsToCollapse = new List<Platform>(_allPlatforms);
+        
+        int collapseCount = 0;
+        foreach (Platform platform in platformsToCollapse)
         {
             if (platform && !platform.IsCollapsed())
             {
+                collapseCount++;
+                Debug.Log($"ChainCollapseBridge: 足場 {platform.name} を崩落開始 (#{collapseCount})");
+                float startTime = Time.time;
+                
+                platform.TriggerCollapse();
+                
+                Debug.Log($"ChainCollapseBridge: 間隔待機開始 ({chainCollapseInterval}秒)");
+                yield return new WaitForSeconds(chainCollapseInterval);
+                
+                float elapsed = Time.time - startTime;
+                Debug.Log($"ChainCollapseBridge: 足場 {platform.name} 処理完了 (実際の経過時間: {elapsed:F3}秒)");
+            }
+        }
+        
+        // 最後に追加で生成された足場があるかチェック（fragileをキャッチした場合）
+        Platform[] finalCheck = FindObjectsByType<Platform>(FindObjectsSortMode.None);
+        foreach (Platform platform in finalCheck)
+        {
+            if (platform && !platform.IsCollapsed() && !platformsToCollapse.Contains(platform))
+            {
+                collapseCount++;
+                Debug.Log($"ChainCollapseBridge: 追加足場 {platform.name} を崩落開始 (#{collapseCount})");
                 platform.TriggerCollapse();
                 yield return new WaitForSeconds(chainCollapseInterval);
             }
         }
 
+        Debug.Log("ChainCollapseBridge: 全足場崩落完了");
+        
         // ゲームオーバー処理
         yield return new WaitForSeconds(gameOverDelay);
         ShowGameOver();

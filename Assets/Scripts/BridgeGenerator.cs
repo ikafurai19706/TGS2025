@@ -192,6 +192,12 @@ public class BridgeGenerator : MonoBehaviour
             platform.type = type;
             platform.repairState = state;
             platform.isRepaired = false;
+            
+            // fragile足場の場合、修繕時に落下してくる足場をnormalPlatformPrefabに設定
+            if (type == Platform.PlatformType.Fragile && normalPlatformPrefab != null)
+            {
+                platform.newPlatformPrefab = normalPlatformPrefab;
+            }
         }
         
         // 生成リストに追加
