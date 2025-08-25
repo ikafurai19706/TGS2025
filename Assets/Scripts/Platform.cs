@@ -322,9 +322,19 @@ public class Platform : MonoBehaviour
     private bool CatchPlatformAtPosition(Vector3 position)
     {
         StopFalling();
-        MovePlatformToPosition(position);
-        SetPlatformAsRepaired();
-        CleanupFallingPlatform();
+        
+        // fragile足場の場合、新しい足場と入れ替える処理
+        if (type == PlatformType.Fragile)
+        {
+            ReplacePlatformWithNew(position);
+        }
+        else
+        {
+            // 通常足場の場合は従来通りの処理
+            MovePlatformToPosition(position);
+            SetPlatformAsRepaired();
+            CleanupFallingPlatform();
+        }
         
         // チュートリアル中の場合、キャッチ成功時にカウントを追加
         if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
@@ -335,7 +345,36 @@ public class Platform : MonoBehaviour
         
         return true;
     }
-
+    
+    private void ReplacePlatformWithNew(Vector3 position)
+    {
+        if (_fallingPlatform != null)
+        {
+            // 落下してきた足場を指定位置に移動
+            _fallingPlatform.transform.position = position;
+            
+            // 落下してきた足場のPlatformコンポーネントを取得して設定
+            Platform newPlatform = _fallingPlatform.GetComponent<Platform>();
+            if (newPlatform != null)
+            {
+                newPlatform.type = PlatformType.Normal; // 新しい足場は通常足場として設定
+                newPlatform.repairState = RepairState.Completed;
+                newPlatform.isRepaired = true;
+                
+                // 親オブジェクトを設定（元の足場と同じ親に）
+                if (transform.parent != null)
+                {
+                    _fallingPlatform.transform.SetParent(transform.parent);
+                }
+            }
+            
+            // 元のfragile足場を削除
+            Destroy(gameObject);
+        }
+        
+        _isFalling = false;
+        _canCatch = false;
+    }
 
     private void MovePlatformToPosition(Vector3 position)
     {
