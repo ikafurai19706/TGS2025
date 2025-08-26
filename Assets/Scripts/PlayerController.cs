@@ -43,6 +43,9 @@ public class PlayerController : MonoBehaviour
     private Vector3 _initialPosition;
     private Vector3 _initialCameraPosition; // カメラの初期位置を記録
     private Coroutine _cameraShakeCoroutine; // カメラ振動のコルーチンを追跡
+    
+    // シリアル通信からの入力フラグを追加
+    private bool _serialInputReceived = false;
     #endregion
 
     #region Constants
@@ -65,20 +68,24 @@ public class PlayerController : MonoBehaviour
         InitializeInput();
     }
 
-    private void OnDestroy()
-    {
-        CleanupInput();
-    }
-
     private void Start()
     {
         InitializeComponents();
+        // シリアル通信のイベントを購読
+        SerialCommunication.OnDetectedSignal += OnSerialInputReceived;
     }
 
     private void Update()
     {
         HandleInput();
         CheckGameCompletion(); // ゲーム完了チェックを追加
+    }
+    
+    private void OnDestroy()
+    {
+        CleanupInput();
+        // シリアル通信のイベント購読を解除
+        SerialCommunication.OnDetectedSignal -= OnSerialInputReceived;
     }
     #endregion
 
@@ -325,7 +332,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleRepairInput()
     {
-        if (Keyboard.current.spaceKey.wasPressedThisFrame)
+        if (IsHammerInputPressed())
         {
             // チュートリアル中の通常足場の場合、1回叩いただけで進行カウントを増やす
             if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode() && 
@@ -415,7 +422,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleMovementInput()
     {
-        if (_canMove && Keyboard.current.spaceKey.wasPressedThisFrame && !_isMoving)
+        if (_canMove && IsHammerInputPressed() && !_isMoving)
         {
             // チュートリアル中の通常足場の場合、移動前に進行カウントを増やす
             if (GameManager.Instance != null && GameManager.Instance.IsTutorialMode())
@@ -1066,6 +1073,27 @@ public class PlayerController : MonoBehaviour
             
             Debug.Log("PlayerController: Rotation constraints reset to normal");
         }
+    }
+    #endregion
+
+    #region Serial Input Handling
+    private void OnSerialInputReceived()
+    {
+        _serialInputReceived = true;
+    }
+    
+    private bool IsHammerInputPressed()
+    {
+        bool keyboardInput = Keyboard.current.spaceKey.wasPressedThisFrame;
+        bool serialInput = _serialInputReceived;
+        
+        // シリアル入力フラグをリセット
+        if (serialInput)
+        {
+            _serialInputReceived = false;
+        }
+        
+        return keyboardInput || serialInput;
     }
     #endregion
 }
