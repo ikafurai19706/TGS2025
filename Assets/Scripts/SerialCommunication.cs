@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Collections;
 using System.Linq;
+using UnityEngine.InputSystem;
 
 public class SerialCommunication : MonoBehaviour
 {
@@ -16,6 +17,9 @@ public class SerialCommunication : MonoBehaviour
     
     [Header("Device Detection Settings")]
     public int deviceDetectionTimeout = 1000; // デバイス判別のタイムアウト（ミリ秒）
+    
+    // Singleton instance
+    public static SerialCommunication Instance { get; private set; }
     
     private SerialPort _serialPort;
     private Thread _readThread;
@@ -30,9 +34,35 @@ public class SerialCommunication : MonoBehaviour
     public static event Action OnDetectedSignal;
     public static event Action<bool> OnInitializationComplete; // 初期化完了イベント（成功/失敗）
     
+    // Public properties for accessing initialization state
+    public bool IsInitializing => _isInitializing;
+    public bool IsConnected => _serialPort != null && _serialPort.IsOpen;
+    public string ConnectedPort => _serialPort?.PortName;
+    
+    private void Awake()
+    {
+        // Singleton pattern implementation
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+            Debug.Log("SerialCommunication: Instance created and set to DontDestroyOnLoad");
+        }
+        else if (Instance != this)
+        {
+            Debug.Log("SerialCommunication: Duplicate instance found, destroying...");
+            Destroy(gameObject);
+            return;
+        }
+    }
+    
     private void Start()
     {
-        InitializeSerial();
+        // Only initialize if this is the main instance
+        if (Instance == this)
+        {
+            InitializeSerial();
+        }
     }
     
     private void Update()
@@ -43,6 +73,12 @@ public class SerialCommunication : MonoBehaviour
             _detectedSignalReceived = false;
             OnDetectedSignal?.Invoke();
             Debug.Log("Serial: Detected signal received!");
+        }
+        
+        // F1キーでデバッグ情報表示 - 新しいInput SystemのAPIを使用
+        if (Keyboard.current != null && Keyboard.current.f1Key.wasPressedThisFrame)
+        {
+            ShowDebugInfo();
         }
     }
     
@@ -480,6 +516,13 @@ public class SerialCommunication : MonoBehaviour
         InitializeSerial();
     }
     
-    // 初期化状態を取得するメソッド
-    public bool IsInitializing => _isInitializing;
+    private void ShowDebugInfo()
+    {
+        Debug.Log("=== Debug Info ===");
+        Debug.Log($"IsInitializing: {_isInitializing}");
+        Debug.Log($"IsConnected: {IsConnected}");
+        Debug.Log($"ConnectedPort: {ConnectedPort}");
+        Debug.Log($"AvailablePorts: {string.Join(", ", SerialPort.GetPortNames())}");
+        Debug.Log("===================");
+    }
 }
